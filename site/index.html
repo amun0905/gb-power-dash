@@ -19,9 +19,9 @@
     --text-secondary: #52514e;
     --text-muted: #7a7974;
     --accent: #2a78d6;
-    /* fuel identities (validated order: Nuclear..Other, adjacent pairs) */
-    --fuel-nuclear: #6250d6; --fuel-biomass: #008300; --fuel-hydro: #e87ba4; --fuel-wind: #2a78d6;
-    --fuel-gas: #eb6834; --fuel-ps: #1baf7a; --fuel-other: #eda100;
+    /* supply-stack identities (validated as an 8-slot adjacent order, bottom->top, light & dark) */
+    --fuel-nuclear: #6250d6; --fuel-biomass: #008300; --fuel-hydro: #e34948; --fuel-wind: #2a78d6;
+    --fuel-gas: #eb6834; --fuel-ps: #1baf7a; --fuel-other: #eda100; --fuel-imports: #e87ba4;
     /* interconnector counterparts (default categorical order 1-7) */
     --ic-1: #2a78d6; --ic-2: #eb6834; --ic-3: #1baf7a; --ic-4: #eda100; --ic-5: #e87ba4; --ic-6: #008300; --ic-7: #6250d6;
     /* prices */
@@ -35,8 +35,8 @@
       color-scheme: dark;
       --page: #121211; --surface-1: #1a1a19; --border: #2c2c2a; --grid: #262624;
       --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --accent: #3987e5;
-      --fuel-nuclear: #9085e9; --fuel-biomass: #0ca30c; --fuel-hydro: #d55181; --fuel-wind: #3987e5;
-      --fuel-gas: #d95926; --fuel-ps: #199e70; --fuel-other: #c98500;
+      --fuel-nuclear: #9085e9; --fuel-biomass: #0ca30c; --fuel-hydro: #e66767; --fuel-wind: #3987e5;
+      --fuel-gas: #d95926; --fuel-ps: #199e70; --fuel-other: #c98500; --fuel-imports: #d55181;
       --ic-1: #3987e5; --ic-2: #d95926; --ic-3: #199e70; --ic-4: #c98500; --ic-5: #d55181; --ic-6: #0ca30c; --ic-7: #9085e9;
       --price-mid: #3987e5; --price-sys: #d95926;
       --div-neg: #3987e5; --div-pos: #e66767;
@@ -118,10 +118,10 @@
 
   <section class="grid">
     <article class="card span-8" data-card="gen">
-      <div class="card-head"><h2>Generation mix &amp; demand</h2><span class="unit">GW · half-hourly</span>
+      <div class="card-head"><h2>Supply mix &amp; demand</h2><span class="unit">GW · half-hourly</span>
         <span class="tools"><button data-toggle-table>Table</button></span></div>
       <div class="chart" id="c-gen"></div><div class="table-wrap"></div>
-      <p class="note">Transmission-metered generation (excludes embedded solar &amp; small wind) stacked; line = initial national demand outturn.</p>
+      <p class="note">Stack = transmission-metered generation + net interconnector imports (exports below zero). Line = initial national demand outturn (INDO), which includes imports. Embedded solar &amp; small wind are in neither.</p>
     </article>
 
     <article class="card span-4" data-card="mix">
@@ -210,7 +210,7 @@
                splitLine: { show: false } },
       yAxis: { type: "value", axisLabel: { color: css("--text-muted"), fontSize: 11 },
                splitLine: { lineStyle: { color: grid } } },
-      tooltip: { trigger: "axis", axisPointer: { type: "line", lineStyle: { color: css("--text-muted"), type: "dashed" } },
+      tooltip: { trigger: "axis", transitionDuration: 0, axisPointer: { type: "line", lineStyle: { color: css("--text-muted"), type: "dashed" } },
                  backgroundColor: css("--surface-1"), borderColor: css("--border"),
                  textStyle: { color: css("--text-primary"), fontSize: 12 }, confine: true },
     };
@@ -230,16 +230,29 @@
       name, type: "line", stack: "gen", symbol: "none", sampling: "lttb",
       lineStyle: { width: 1, color: surf }, // 1px surface seam between fills
       areaStyle: { color: css(FUEL_VAR[name]), opacity: 1 }, itemStyle: { color: css(FUEL_VAR[name]) },
-      emphasis: { focus: "series" }, data: pairs(w.t, w.generation[name], 1 / 1000),
+      data: pairs(w.t, w.generation[name], 1 / 1000),
     }));
+    // Net imports on top so supply meets demand; net exports drop below zero (samesign stacking).
+    const icNames = Object.keys(w.interconnectors);
+    const netImp = w.t.map((_, i) => {
+      const vals = icNames.map((k) => w.interconnectors[k][i]).filter((v) => v != null);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+    });
+    series.push({ name: "Net imports", type: "line", stack: "gen", symbol: "none", sampling: "lttb",
+      lineStyle: { width: 1, color: surf }, areaStyle: { color: css("--fuel-imports"), opacity: 1 },
+      itemStyle: { color: css("--fuel-imports") }, data: pairs(w.t, netImp, 1 / 1000) });
+    series.forEach((x) => { x.stackStrategy = "samesign"; });
     series.push({ name: "Demand (INDO)", type: "line", symbol: "none", z: 5,
       lineStyle: { width: 2, color: css("--demand") }, itemStyle: { color: css("--demand") },
       data: pairs(w.t, w.demand, 1 / 1000) });
     const o = base();
     o.series = series;
     o.tooltip.formatter = (ps) => {
-      const total = ps.filter((p) => p.seriesName !== "Demand (INDO)").reduce((s, p) => s + (p.value[1] || 0), 0);
-      return tipRows(ps, " GW", 1) + `<div style="border-top:1px solid ${css("--border")};margin-top:4px;padding-top:4px;display:flex;justify-content:space-between"><span>Total generation</span><b>${num(total, 1)} GW</b></div>`;
+      const sum = (f) => ps.filter(f).reduce((s, p) => s + (p.value[1] || 0), 0);
+      const gen = sum((p) => p.seriesName !== "Demand (INDO)" && p.seriesName !== "Net imports");
+      const supply = sum((p) => p.seriesName !== "Demand (INDO)");
+      const row = (l, v) => `<div style="display:flex;justify-content:space-between;gap:10px"><span>${l}</span><b>${num(v, 1)} GW</b></div>`;
+      return tipRows(ps, " GW", 1) + `<div style="border-top:1px solid ${css("--border")};margin-top:4px;padding-top:4px">${row("GB generation", gen)}${row("Generation + net imports", supply)}</div>`;
     };
     charts.gen.setOption(o, true);
     setTable("gen", ["Time", ...series.map((s) => s.name)], w.t.map((t, i) => [t, ...series.map((s) => s.data[i][1])]), 1);
