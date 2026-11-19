@@ -35,10 +35,10 @@
     </article>
 
     <article class="card span-4" data-card="mix">
-      <div class="card-head"><h2>Generation now</h2><span class="unit" id="mix-time">GW</span>
+      <div class="card-head"><h2>Supply now</h2><span class="unit" id="mix-time">GW</span>
         <span class="tools"><button data-toggle-table>Table</button></span></div>
       <div class="chart" id="c-mix"></div><div class="table-wrap"></div>
-      <p class="note">Latest 5-minute FUELINST reading; share of transmission generation.</p>
+      <p class="note">Latest 5-minute reading. Share of supply = share of GB transmission generation plus net imports (embedded solar &amp; small wind not included).</p>
     </article>
 
     <article class="card span-6" data-card="price">
@@ -168,10 +168,20 @@
     setTable("gen", ["Time", ...series.map((s) => s.name)], w.t.map((t, i) => [t, ...series.map((s) => s.data[i][1])]), 1);
   }
 
+  // Latest supply mix: GB transmission generation by fuel plus net imports (when GB is importing).
+  // Shares are taken over this total ("share of supply"); when GB net-exports, supply = generation.
+  function latestSupply() {
+    const g = { ...(DATA.latest.generation || {}) };
+    const net = Object.values(DATA.latest.interconnectors || {}).reduce((s, v) => s + v, 0);
+    if (net > 0) g["Net imports"] = net;
+    const total = Object.values(g).reduce((s, v) => s + Math.max(0, v), 0);
+    return { g, net, total };
+  }
+
   function drawMix() {
-    const g = DATA.latest.generation || {};
-    const names = Object.keys(FUEL_VAR).filter((k) => k in g);
-    const total = names.reduce((s, k) => s + Math.max(0, g[k]), 0);
+    const { g, total } = latestSupply();
+    const names = [...Object.keys(FUEL_VAR), "Net imports"].filter((k) => k in g);
+    const colorOf = (k) => css(k === "Net imports" ? "--fuel-imports" : FUEL_VAR[k]);
     const o = base();
     o.legend = { show: false };
     o.grid = { left: 118, right: 70, top: 6, bottom: 6 };
@@ -180,12 +190,12 @@
     o.yAxis = { type: "category", inverse: true, data: names, axisTick: { show: false }, axisLine: { show: false },
                 axisLabel: { color: css("--text-primary"), fontSize: 12 } };
     o.series = [{ type: "bar", barWidth: "62%", data: names.map((k) => ({
-        value: g[k] / 1000, itemStyle: { color: css(FUEL_VAR[k]), borderRadius: [0, 4, 4, 0] } })),
+        value: g[k] / 1000, itemStyle: { color: colorOf(k), borderRadius: [0, 4, 4, 0] } })),
       label: { show: true, position: "right", color: css("--text-secondary"), fontSize: 12,
                formatter: (p) => `${num(p.value, 1)}  ·  ${total ? Math.round(100 * g[names[p.dataIndex]] / total) : 0}%` } }];
     charts.mix.setOption(o, true);
     document.getElementById("mix-time").textContent = DATA.latest.time ? `GW · ${fmtHM.format(new Date(DATA.latest.time))}` : "GW";
-    setTable("mix", ["Fuel", "GW", "Share %"], names.map((k) => [k, g[k] / 1000, total ? 100 * g[k] / total : null]), 1, false);
+    setTable("mix", ["Source", "GW", "Share of supply %"], names.map((k) => [k, g[k] / 1000, total ? 100 * g[k] / total : null]), 1, false);
   }
 
   function drawPrice(w) {
@@ -254,16 +264,15 @@
 
   // ---------- KPI tiles ----------
   function drawKpis() {
-    const L = DATA.latest, g = L.generation || {}, ic = L.interconnectors || {};
-    const tot = Object.values(g).reduce((s, v) => s + Math.max(0, v), 0);
-    const share = (k) => tot ? Math.round(100 * (g[k] || 0) / tot) : null;
-    const net = Object.values(ic).reduce((s, v) => s + v, 0);
+    const L = DATA.latest, ic = L.interconnectors || {};
+    const { g, net, total } = latestSupply();
+    const share = (k) => total ? Math.round(100 * (g[k] || 0) / total) : null;
     // half-hour as a UK time range, e.g. "15:30–16:00"
     const hh = (x) => { if (!x) return ""; const t = new Date(x.time); return `${fmtHM.format(t)}–${fmtHM.format(new Date(t.getTime() + 30 * 60e3))}`; };
     const tiles = [
       ["Demand (INDO)", gw(L.demand && L.demand.value), "GW", `Half-hour ${hh(L.demand)}`],
-      ["Wind share", share("Wind") ?? "–", "%", `${gw(g.Wind)} GW at ${L.time ? fmtHM.format(new Date(L.time)) : ""}`],
-      ["Gas share", share("Gas") ?? "–", "%", `${gw(g.Gas)} GW`],
+      ["Wind share of supply", share("Wind") ?? "–", "%", `${gw(g.Wind)} GW at ${L.time ? fmtHM.format(new Date(L.time)) : ""}`],
+      ["Gas share of supply", share("Gas") ?? "–", "%", `${gw(g.Gas)} GW`],
       ["Net imports", gw(net), "GW", `${Object.keys(ic).length} counterparts`],
       ["System price", L.system_price ? num(L.system_price.value, 2) : "–", "£/MWh", `Half-hour ${hh(L.system_price)}`],
       ["Market Index Price (MIP)", L.mid_price ? num(L.mid_price.value, 2) : "–", "£/MWh", `Half-hour ${hh(L.mid_price)}`],
