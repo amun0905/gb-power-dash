@@ -10,13 +10,13 @@ import pandas as pd
 from .export import _clean
 from .registry import DatasetSpec
 from .sources import attribution
+from .mip import DEFINITION, mip_series
 from .storage import Store
 
 log = logging.getLogger(__name__)
 
 PAST_DAYS = 30
 FUTURE_DAYS = 2
-MID_PROVIDER = "APXMIDP"
 
 # ENTSO-E zone -> display name; the first six match the interconnector counterparts on the overview
 NEIGHBOURS = {
@@ -43,10 +43,7 @@ def build_prices(store: Store, registry: dict[str, DatasetSpec], now: datetime |
     gb = read("da_gb_n2ex")
     gb_h = _hourly(gb.set_index("startTime")["price"] if not gb.empty else pd.Series(dtype=float), index)
 
-    mid = read("market_index_mid")
-    if not mid.empty:
-        mid = mid[(mid.dataProvider == MID_PROVIDER) & (mid.volume > 0)]
-    mid_h = _hourly(mid.set_index("startTime")["price"] if not mid.empty else pd.Series(dtype=float), index)
+    mid_h = _hourly(mip_series(read("market_index_mid")), index)
 
     sp = read("system_prices")
     sp_h = _hourly(sp.set_index("startTime")["systemBuyPrice"] if not sp.empty else pd.Series(dtype=float), index)
@@ -80,7 +77,7 @@ def build_prices(store: Store, registry: dict[str, DatasetSpec], now: datetime |
         "attribution": [a for a in (attribution("neso"), attribution("entsoe"), attribution("ecb"), attribution("elexon")) if a],
         "notes": [
             "All prices in £/MWh, hourly averages. Continental prices converted from EUR at the latest ECB reference rate for each day.",
-            "GB day-ahead = Nord Pool N2EX hourly auction. Market Index and system price are hourly averages of half-hourly values. Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour.",
+            "GB day-ahead = Nord Pool N2EX hourly auction. MIP and system price are hourly averages of half-hourly values. " + DEFINITION,
             "SDAC zones clear in 15-minute periods; these are averaged to hourly.",
         ],
     }

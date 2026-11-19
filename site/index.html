@@ -42,10 +42,10 @@
     </article>
 
     <article class="card span-6" data-card="price">
-      <div class="card-head"><h2>Market Index price vs system price</h2><span class="unit">£/MWh</span>
+      <div class="card-head"><h2>Market Index Price vs system price</h2><span class="unit">£/MWh</span>
         <span class="tools"><button data-toggle-table>Table</button></span></div>
       <div class="chart short" id="c-price"></div><div class="table-wrap"></div>
-      <p class="note">Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour. System price = imbalance cash-out price.</p>
+      <p class="note">MIP = Market Index Price, calculated as in the BSC: the volume-weighted average of all Market Index Data providers' prices for each half-hour (in practice EPEX SPOT; N2EX reports no volume). System price = imbalance cash-out price.</p>
     </article>
 
     <article class="card span-6" data-card="niv">
@@ -191,13 +191,13 @@
   function drawPrice(w) {
     const o = base();
     o.series = [
-      { name: "Market Index (EPEX)", type: "line", symbol: "none", lineStyle: { width: 2, color: css("--price-mid") }, itemStyle: { color: css("--price-mid") }, data: pairs(w.t, w.mid), connectNulls: false },
+      { name: "Market Index Price (MIP)", type: "line", symbol: "none", lineStyle: { width: 2, color: css("--price-mid") }, itemStyle: { color: css("--price-mid") }, data: pairs(w.t, w.mid), connectNulls: false },
       { name: "System price", type: "line", symbol: "none", step: "start", lineStyle: { width: 2, color: css("--price-sys") }, itemStyle: { color: css("--price-sys") }, data: pairs(w.t, w.sys) },
     ];
     o.yAxis.scale = true;
     o.tooltip.formatter = (ps) => tipRows(ps, " £/MWh", 2);
     charts.price.setOption(o, true);
-    setTable("price", ["Time", "Market Index £/MWh", "System price £/MWh"], w.t.map((t, i) => [t, w.mid[i], w.sys[i]]), 2);
+    setTable("price", ["Time", "MIP £/MWh", "System price £/MWh"], w.t.map((t, i) => [t, w.mid[i], w.sys[i]]), 2);
   }
 
   function drawNiv(w) {
@@ -266,7 +266,7 @@
       ["Gas share", share("Gas") ?? "–", "%", `${gw(g.Gas)} GW`],
       ["Net imports", gw(net), "GW", `${Object.keys(ic).length} counterparts`],
       ["System price", L.system_price ? num(L.system_price.value, 2) : "–", "£/MWh", `Half-hour ${hh(L.system_price)}`],
-      ["Market Index (EPEX)", L.mid_price ? num(L.mid_price.value, 2) : "–", "£/MWh", `Half-hour ${hh(L.mid_price)}`],
+      ["Market Index Price (MIP)", L.mid_price ? num(L.mid_price.value, 2) : "–", "£/MWh", `Half-hour ${hh(L.mid_price)}`],
     ];
     document.getElementById("kpis").innerHTML = tiles.map(([l, v, u, s]) =>
       `<div class="kpi"><div class="label">${l}</div><div class="value">${v}<small>${u}</small></div><div class="sub">${s}</div></div>`).join("");

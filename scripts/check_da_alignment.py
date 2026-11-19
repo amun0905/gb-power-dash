@@ -15,6 +15,7 @@ import os
 import pandas as pd
 
 from gbdash.registry import load_registry
+from gbdash.mip import mip_series
 from gbdash.storage import Store
 
 
@@ -26,8 +27,7 @@ def main() -> None:
 
     da = store.read(reg["da_gb_n2ex"]).set_index("startTime")["price"].sort_index()
     mid = store.read(reg["market_index_mid"])
-    mid = mid[(mid.dataProvider == "APXMIDP") & (mid.volume > 0)].set_index("startTime")["price"].sort_index()
-    mid_h = mid.resample("1h").mean()
+    mid_h = mip_series(mid).resample("1h").mean()
     if da.empty or mid_h.empty:
         raise SystemExit("Need both da_gb_n2ex and market_index_mid in the store (run gbdash backfill first).")
 

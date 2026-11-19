@@ -179,3 +179,14 @@ def test_overview_export_is_aligned_and_valid_json(store):
     write_overview(store, REG, now=now)
     with store.fs.open(f"{store.root}/web/overview.json") as f:
         json.loads(f.read())  # strict JSON (no NaN)
+
+
+def test_mip_is_volume_weighted_across_providers():
+    from gbdash.mip import mip_series
+    t = pd.Timestamp("2026-11-19T10:00Z")
+    mid = pd.DataFrame({"startTime": [t, t, t + pd.Timedelta("30min"), t + pd.Timedelta("30min")],
+                        "dataProvider": ["APXMIDP", "N2EXMIDP", "APXMIDP", "N2EXMIDP"],
+                        "price": [100.0, 0.0, 90.0, 120.0], "volume": [300.0, 0.0, 100.0, 300.0]})
+    s = mip_series(mid)
+    assert s[t] == 100.0                                   # zero-volume provider ignored
+    assert s[t + pd.Timedelta("30min")] == pytest.approx(112.5)  # (90*100 + 120*300) / 400

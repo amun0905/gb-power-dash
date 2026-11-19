@@ -13,6 +13,7 @@ import pandas as pd
 
 from .registry import DatasetSpec
 from .sources.elexon import ATTRIBUTION
+from .mip import DEFINITION, mip_series
 from .storage import Store
 
 log = logging.getLogger(__name__)
@@ -40,7 +41,6 @@ IC_GROUPS: dict[str, list[str]] = {
     "Ireland & NI": ["INTIRL", "INTEW", "INTGRNL"],
 }
 
-MID_PROVIDER = "APXMIDP"  # N2EX usually reports zero volume/price
 
 
 def _code_to_group(groups: dict[str, list[str]]) -> dict[str, str]:
@@ -91,10 +91,7 @@ def build_overview(store: Store, registry: dict[str, DatasetSpec], now: datetime
     demand_hh = (demand.set_index("startTime")["demand"].reindex(index) if not demand.empty
                  else pd.Series(index=index, dtype=float))
 
-    mid = store.read(registry["market_index_mid"], start, end)
-    if not mid.empty:
-        mid = mid[(mid["dataProvider"] == MID_PROVIDER) & (mid["volume"] > 0)]
-    mid_hh = mid.set_index("startTime")["price"].reindex(index) if not mid.empty else pd.Series(index=index, dtype=float)
+    mid_hh = mip_series(store.read(registry["market_index_mid"], start, end)).reindex(index)
 
     sp = store.read(registry["system_prices"], start, end)
     sp = sp.set_index("startTime").reindex(index) if not sp.empty else pd.DataFrame(index=index, columns=["systemBuyPrice", "netImbalanceVolume"])
@@ -137,7 +134,7 @@ def build_overview(store: Store, registry: dict[str, DatasetSpec], now: datetime
         "notes": [
             "Generation is transmission-metered (FUELINST); embedded solar and small wind are not included.",
             "Interconnector flows: positive = import into GB, negative = export.",
-            "Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour.",
+            DEFINITION,
         ],
     }
     # Unmapped fuels would silently vanish from the stack; make that visible in the logs.

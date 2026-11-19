@@ -1,5 +1,5 @@
 """Backtest: buy 1 MW in the N2EX day-ahead auction for every hour of a block, then exit
-either by selling at the Market Index price (MID, intraday proxy) or by leaving the position
+either by selling at the Market Index Price (MIP, intraday proxy) or by leaving the position
 to settle at the system (imbalance) price. Writes web/strategies.json.
 
 Conventions
@@ -8,7 +8,7 @@ Conventions
   * Peak = 07:00-19:00 UK on weekdays (EFA blocks 3-5, Mon-Fri); Baseload = all hours.
   * 1 MW held for a half-hour = 0.5 MWh; P&L per half-hour = 0.5 * (exit price - day-ahead price).
   * Half-hours where either price is missing are skipped and counted against coverage.
-  * No fees, bid-ask spread or slippage; MID is a volume-weighted average, not an executable price.
+  * No fees, bid-ask spread or slippage; MIP is a volume-weighted average, not an executable price.
 """
 from __future__ import annotations
 
@@ -21,12 +21,12 @@ import pandas as pd
 from .export import _clean
 from .registry import DatasetSpec
 from .sources import attribution
+from .mip import DEFINITION, mip_series
 from .storage import Store
 
 log = logging.getLogger(__name__)
 
 TZ = "Europe/London"
-MID_PROVIDER = "APXMIDP"
 BLOCKS = ["EFA 1 (23–03)", "EFA 2 (03–07)", "EFA 3 (07–11)", "EFA 4 (11–15)", "EFA 5 (15–19)", "EFA 6 (19–23)",
           "Peak (07–19 wkdy)", "Baseload"]
 
@@ -51,10 +51,7 @@ def build_frame(store: Store, registry: dict[str, DatasetSpec], start, end) -> p
     da_s = da_s.resample("1h").mean() if not da_s.empty else da_s  # in case the source is ever half-hourly
     df["da"] = da_s.reindex(hh.floor("1h")).to_numpy() if not da_s.empty else np.nan
 
-    mid = store.read(registry["market_index_mid"], start, end)
-    if not mid.empty:
-        mid = mid[(mid.dataProvider == MID_PROVIDER) & (mid.volume > 0)]
-    df["mid"] = mid.set_index("startTime")["price"].reindex(hh).to_numpy() if not mid.empty else np.nan
+    df["mid"] = mip_series(store.read(registry["market_index_mid"], start, end)).reindex(hh).to_numpy()
 
     sp = store.read(registry["system_prices"], start, end)
     df["imbalance"] = sp.set_index("startTime")["systemSellPrice"].reindex(hh).to_numpy() if not sp.empty else np.nan
@@ -126,7 +123,7 @@ def build_strategies(store: Store, registry: dict[str, DatasetSpec], now: dateti
         "attribution": [attribution("neso"), attribution("elexon")],
         "notes": [
             "Long 1 MW in the N2EX day-ahead auction for every hour of the block, closed out at the exit price.",
-            "Market Index exit: sold at the Market Index (EPEX) price, an intraday proxy rather than an executable price. Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour.",
+            "MIP exit: sold at the Market Index Price, an intraday proxy rather than an executable price. " + DEFINITION,
             "Imbalance exit: position left open and settled at the system price.",
             "No fees, bid-ask spread or slippage. Half-hours missing either price are skipped (see coverage).",
             "EFA blocks and days in UK time; an EFA day starts at 23:00 the evening before.",
