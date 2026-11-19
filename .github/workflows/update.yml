@@ -53,6 +53,10 @@ jobs:
         # shellcheck disable=SC2086
         run: gbdash update $IN_DATASETS
 
+      - name: Export website data
+        if: always()
+        run: gbdash export
+
       - name: Freshness check
         if: always()
         run: gbdash status --fail-on-stale

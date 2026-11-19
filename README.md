@@ -71,3 +71,14 @@ gbdash status
 Elexon data is used under the BMRS Data Licence. Show *"Contains BMRS data © Elexon Limited
 copyright and database right"* wherever the data is displayed (the manifests carry this text).
 Check each source's terms before any commercial use.
+
+## Website (`site/`)
+
+A static page (`site/index.html` with ECharts) that reads `web/overview.json` from the bucket.
+`gbdash export` writes that file, and the `update-data` workflow runs it after every update. The file holds
+30 days of half-hourly data, already aggregated, so the page loads quickly.
+
+- **Data URL:** set in `site/config.js`. Add `?data=<url>` to the page address to point it elsewhere.
+- **Hosting:** GitHub Pages via `.github/workflows/pages.yml`. One-off setup: *Settings → Pages → Source: GitHub Actions*.
+- **Local preview:** run `gbdash update`, then `gbdash export`, then `python -m http.server 8000` from the repo root, and open
+  `http://localhost:8000/site/?data=/data/web/overview.json`.

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GB Power Market · Overview</title>
+<link rel="icon" href="data:,">
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+  /* ---------- tokens (light) ---------- */
+  :root {
+    color-scheme: light;
+    --page: #f4f4f1;
+    --surface-1: #fcfcfb;
+    --border: #e3e2dd;
+    --grid: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7974;
+    --accent: #2a78d6;
+    /* fuel identities (validated order: Nuclear..Other, adjacent pairs) */
+    --fuel-nuclear: #6250d6; --fuel-biomass: #008300; --fuel-hydro: #e87ba4; --fuel-wind: #2a78d6;
+    --fuel-gas: #eb6834; --fuel-ps: #1baf7a; --fuel-other: #eda100;
+    /* interconnector counterparts (default categorical order 1-7) */
+    --ic-1: #2a78d6; --ic-2: #eb6834; --ic-3: #1baf7a; --ic-4: #eda100; --ic-5: #e87ba4; --ic-6: #008300; --ic-7: #6250d6;
+    /* prices */
+    --price-mid: #2a78d6; --price-sys: #eb6834;
+    /* diverging poles for NIV */
+    --div-neg: #2a78d6; --div-pos: #e34948;
+    --demand: #0b0b0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #121211; --surface-1: #1a1a19; --border: #2c2c2a; --grid: #262624;
+      --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --accent: #3987e5;
+      --fuel-nuclear: #9085e9; --fuel-biomass: #0ca30c; --fuel-hydro: #d55181; --fuel-wind: #3987e5;
+      --fuel-gas: #d95926; --fuel-ps: #199e70; --fuel-other: #c98500;
+      --ic-1: #3987e5; --ic-2: #d95926; --ic-3: #199e70; --ic-4: #c98500; --ic-5: #d55181; --ic-6: #0ca30c; --ic-7: #9085e9;
+      --price-mid: #3987e5; --price-sys: #d95926;
+      --div-neg: #3987e5; --div-pos: #e66767;
+      --demand: #f0efec;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text-primary);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+         font-variant-numeric: tabular-nums; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+           padding: 14px 24px; background: var(--surface-1); border-bottom: 1px solid var(--border);
+           position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+  header .meta { color: var(--text-secondary); font-size: 12.5px; }
+  header .spacer { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; color: var(--text-secondary); padding: 6px 12px;
+                font: inherit; font-size: 13px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  main { padding: 18px 24px 32px; max-width: 1560px; margin: 0 auto; }
+
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kpi .label { color: var(--text-secondary); font-size: 12px; }
+  .kpi .value { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; }
+  .kpi .value small { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+  .kpi .sub { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
+
+  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+          padding: 14px 16px 8px; display: flex; flex-direction: column; min-width: 0; }
+  .span-8 { grid-column: span 8; } .span-4 { grid-column: span 4; } .span-6 { grid-column: span 6; }
+  .card-head { display: flex; align-items: baseline; gap: 10px; }
+  .card h2 { font-size: 14px; margin: 0; font-weight: 620; }
+  .card .unit { color: var(--text-muted); font-size: 12px; }
+  .card .tools { margin-left: auto; }
+  .card .tools button { border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+                        border-radius: 6px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+  .chart { height: 340px; width: 100%; }
+  .chart.short { height: 260px; }
+  .note { color: var(--text-muted); font-size: 11.5px; margin: 2px 0 6px; }
+  .key { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; }
+  .key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .table-wrap { max-height: 340px; overflow: auto; display: none; }
+  .card.show-table .table-wrap { display: block; }
+  .card.show-table .chart { display: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-secondary); font-weight: 600; }
+  .banner { display: none; background: #d03b3b; color: #fff; padding: 10px 24px; font-size: 13px; }
+  footer { color: var(--text-muted); font-size: 11.5px; padding: 0 24px 24px; max-width: 1560px; margin: 0 auto; }
+
+  @media (max-width: 1100px) {
+    .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .span-8, .span-4, .span-6 { grid-column: span 12; }
+  }
+  @media (max-width: 560px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } main, header { padding-left: 12px; padding-right: 12px; } }
+</style>
+</head>
+<body>
+<div class="banner" id="banner" role="alert"></div>
+<header>
+  <h1>GB Power Market · Overview</h1>
+  <span class="meta" id="meta">Loading…</span>
+  <span class="spacer"></span>
+  <div class="seg" role="group" aria-label="Time range" id="range">
+    <button data-hours="24">24h</button>
+    <button data-hours="168" aria-pressed="true">7d</button>
+    <button data-hours="720">30d</button>
+  </div>
+</header>
+
+<main>
+  <section class="kpis" id="kpis" aria-label="Latest values"></section>
+
+  <section class="grid">
+    <article class="card span-8" data-card="gen">
+      <div class="card-head"><h2>Generation mix &amp; demand</h2><span class="unit">GW · half-hourly</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart" id="c-gen"></div><div class="table-wrap"></div>
+      <p class="note">Transmission-metered generation (excludes embedded solar &amp; small wind) stacked; line = initial national demand outturn.</p>
+    </article>
+
+    <article class="card span-4" data-card="mix">
+      <div class="card-head"><h2>Generation now</h2><span class="unit" id="mix-time">GW</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart" id="c-mix"></div><div class="table-wrap"></div>
+      <p class="note">Latest 5-minute FUELINST reading; share of transmission generation.</p>
+    </article>
+
+    <article class="card span-6" data-card="price">
+      <div class="card-head"><h2>Market Index price vs system price</h2><span class="unit">£/MWh</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart short" id="c-price"></div><div class="table-wrap"></div>
+      <p class="note">MID = APX Market Index (short-term traded reference). System price = imbalance cash-out price.</p>
+    </article>
+
+    <article class="card span-6" data-card="niv">
+      <div class="card-head"><h2>Net imbalance volume</h2><span class="unit">MWh</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart short" id="c-niv"></div><div class="table-wrap"></div>
+      <p class="note"><span class="key"><i style="background:var(--div-pos)"></i>Positive: system short (NESO buying)</span>
+        <span class="key"><i style="background:var(--div-neg)"></i>Negative: system long (NESO selling)</span></p>
+    </article>
+
+    <article class="card span-8" data-card="ic">
+      <div class="card-head"><h2>Interconnector flows by counterpart</h2><span class="unit">GW · + import / − export</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart" id="c-ic"></div><div class="table-wrap"></div>
+      <p class="note">France = IFA + IFA2 + ElecLink; Ireland &amp; NI = Moyle + East–West + Greenlink.</p>
+    </article>
+
+    <article class="card span-4" data-card="icnow">
+      <div class="card-head"><h2>Interconnectors now</h2><span class="unit">GW</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart" id="c-icnow"></div><div class="table-wrap"></div>
+      <p class="note">Positive = flowing into GB.</p>
+    </article>
+  </section>
+</main>
+<footer id="footer"></footer>
+
+<script>
+(() => {
+  const cfg = window.GBDASH_CONFIG || {};
+  const params = new URLSearchParams(location.search);
+  const DATA_URL = params.get("data") || cfg.DATA_URL;
+  const TZ = "Europe/London";
+
+  const FUEL_VAR = { "Nuclear": "--fuel-nuclear", "Biomass": "--fuel-biomass", "Hydro": "--fuel-hydro", "Wind": "--fuel-wind",
+                     "Gas": "--fuel-gas", "Pumped storage": "--fuel-ps", "Coal, oil & other": "--fuel-other" };
+  const IC_ORDER = ["France", "Belgium", "Netherlands", "Norway", "Denmark", "Ireland & NI", "Other"];
+
+  let DATA = null, HOURS = 168;
+  const charts = {};
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const fmtTime = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const fmtHM = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+  const fmtDay = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "2-digit", month: "short" });
+  const gw = (mw) => mw == null ? "–" : (mw / 1000).toFixed(1);
+  const num = (v, d = 1) => v == null ? "–" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  // ---------- data window ----------
+  function windowed() {
+    const t = DATA.t, cutoff = t[t.length - 1] - HOURS * 3600e3;
+    let i0 = t.findIndex((x) => x > cutoff); if (i0 < 0) i0 = 0;
+    const sl = (a) => a.slice(i0);
+    const mapObj = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, sl(v)]));
+    // trim trailing half-hours with no data at all (the current, unfinished period)
+    return { t: sl(t), generation: mapObj(DATA.generation), interconnectors: mapObj(DATA.interconnectors),
+             demand: sl(DATA.demand), mid: sl(DATA.mid_price), sys: sl(DATA.system_price), niv: sl(DATA.niv) };
+  }
+  const pairs = (t, arr, scale = 1) => t.map((x, i) => [x, arr[i] == null ? null : arr[i] * scale]);
+
+  // ---------- shared chart bits ----------
+  function base() {
+    const ink2 = css("--text-secondary"), grid = css("--grid");
+    return {
+      animation: false,
+      textStyle: { fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", color: ink2 },
+      grid: { left: 52, right: 16, top: 36, bottom: 28 },
+      legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10, itemGap: 12,
+                textStyle: { color: ink2, fontSize: 12 } },
+      xAxis: { type: "time", axisLine: { lineStyle: { color: grid } }, axisTick: { show: false },
+               axisLabel: { color: css("--text-muted"), fontSize: 11, hideOverlap: true,
+                            formatter: (v) => HOURS <= 24 ? fmtHM.format(v) : fmtDay.format(v) },
+               splitLine: { show: false } },
+      yAxis: { type: "value", axisLabel: { color: css("--text-muted"), fontSize: 11 },
+               splitLine: { lineStyle: { color: grid } } },
+      tooltip: { trigger: "axis", axisPointer: { type: "line", lineStyle: { color: css("--text-muted"), type: "dashed" } },
+                 backgroundColor: css("--surface-1"), borderColor: css("--border"),
+                 textStyle: { color: css("--text-primary"), fontSize: 12 }, confine: true },
+    };
+  }
+  function tipRows(params, unit, decimals, scaleBack = 1) {
+    if (!params.length) return "";
+    const head = `<div style="font-weight:600;margin-bottom:4px">${fmtTime.format(params[0].value[0])}</div>`;
+    const rows = params.filter((p) => p.value[1] != null).slice().reverse().map((p) =>
+      `<div style="display:flex;gap:10px;justify-content:space-between"><span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${p.color};margin-right:6px"></span>${p.seriesName}</span><b>${num(p.value[1] * scaleBack, decimals)}${unit}</b></div>`).join("");
+    return head + rows;
+  }
+
+  // ---------- charts ----------
+  function drawGen(w) {
+    const surf = css("--surface-1");
+    const series = Object.keys(FUEL_VAR).filter((k) => k in w.generation).map((name) => ({
+      name, type: "line", stack: "gen", symbol: "none", sampling: "lttb",
+      lineStyle: { width: 1, color: surf }, // 1px surface seam between fills
+      areaStyle: { color: css(FUEL_VAR[name]), opacity: 1 }, itemStyle: { color: css(FUEL_VAR[name]) },
+      emphasis: { focus: "series" }, data: pairs(w.t, w.generation[name], 1 / 1000),
+    }));
+    series.push({ name: "Demand (INDO)", type: "line", symbol: "none", z: 5,
+      lineStyle: { width: 2, color: css("--demand") }, itemStyle: { color: css("--demand") },
+      data: pairs(w.t, w.demand, 1 / 1000) });
+    const o = base();
+    o.series = series;
+    o.tooltip.formatter = (ps) => {
+      const total = ps.filter((p) => p.seriesName !== "Demand (INDO)").reduce((s, p) => s + (p.value[1] || 0), 0);
+      return tipRows(ps, " GW", 1) + `<div style="border-top:1px solid ${css("--border")};margin-top:4px;padding-top:4px;display:flex;justify-content:space-between"><span>Total generation</span><b>${num(total, 1)} GW</b></div>`;
+    };
+    charts.gen.setOption(o, true);
+    setTable("gen", ["Time", ...series.map((s) => s.name)], w.t.map((t, i) => [t, ...series.map((s) => s.data[i][1])]), 1);
+  }
+
+  function drawMix() {
+    const g = DATA.latest.generation || {};
+    const names = Object.keys(FUEL_VAR).filter((k) => k in g);
+    const total = names.reduce((s, k) => s + Math.max(0, g[k]), 0);
+    const o = base();
+    o.legend = { show: false };
+    o.grid = { left: 118, right: 70, top: 6, bottom: 6 };
+    o.tooltip = { show: false };
+    o.xAxis = { type: "value", show: false, max: (v) => v.max * 1.02 };
+    o.yAxis = { type: "category", inverse: true, data: names, axisTick: { show: false }, axisLine: { show: false },
+                axisLabel: { color: css("--text-primary"), fontSize: 12 } };
+    o.series = [{ type: "bar", barWidth: "62%", data: names.map((k) => ({
+        value: g[k] / 1000, itemStyle: { color: css(FUEL_VAR[k]), borderRadius: [0, 4, 4, 0] } })),
+      label: { show: true, position: "right", color: css("--text-secondary"), fontSize: 12,
+               formatter: (p) => `${num(p.value, 1)}  ·  ${total ? Math.round(100 * g[names[p.dataIndex]] / total) : 0}%` } }];
+    charts.mix.setOption(o, true);
+    document.getElementById("mix-time").textContent = DATA.latest.time ? `GW · ${fmtHM.format(new Date(DATA.latest.time))}` : "GW";
+    setTable("mix", ["Fuel", "GW", "Share %"], names.map((k) => [k, g[k] / 1000, total ? 100 * g[k] / total : null]), 1, false);
+  }
+
+  function drawPrice(w) {
+    const o = base();
+    o.series = [
+      { name: "Market Index (APX)", type: "line", symbol: "none", lineStyle: { width: 2, color: css("--price-mid") }, itemStyle: { color: css("--price-mid") }, data: pairs(w.t, w.mid), connectNulls: false },
+      { name: "System price", type: "line", symbol: "none", step: "start", lineStyle: { width: 2, color: css("--price-sys") }, itemStyle: { color: css("--price-sys") }, data: pairs(w.t, w.sys) },
+    ];
+    o.yAxis.scale = true;
+    o.tooltip.formatter = (ps) => tipRows(ps, " £/MWh", 2);
+    charts.price.setOption(o, true);
+    setTable("price", ["Time", "MID £/MWh", "System price £/MWh"], w.t.map((t, i) => [t, w.mid[i], w.sys[i]]), 2);
+  }
+
+  function drawNiv(w) {
+    const pos = css("--div-pos"), neg = css("--div-neg");
+    const o = base();
+    o.legend = { show: false };
+    o.grid.top = 12;
+    o.series = [{ name: "NIV", type: "bar", barCategoryGap: "20%",
+      data: w.t.map((t, i) => ({ value: [t, w.niv[i]], itemStyle: { color: (w.niv[i] ?? 0) >= 0 ? pos : neg } })) }];
+    o.tooltip.formatter = (ps) => {
+      const v = ps[0] && ps[0].value[1]; if (v == null) return "";
+      return `<div style="font-weight:600;margin-bottom:4px">${fmtTime.format(ps[0].value[0])}</div>NIV <b>${num(v, 0)} MWh</b> · system ${v >= 0 ? "short" : "long"}`;
+    };
+    charts.niv.setOption(o, true);
+    setTable("niv", ["Time", "NIV MWh"], w.t.map((t, i) => [t, w.niv[i]]), 0);
+  }
+
+  function drawIc(w) {
+    const names = IC_ORDER.filter((k) => k in w.interconnectors);
+    const o = base();
+    o.series = names.map((name) => {
+      const c = css(`--ic-${IC_ORDER.indexOf(name) + 1}`);
+      return { name, type: "line", stack: "ic", stackStrategy: "samesign", symbol: "none", sampling: "lttb",
+               lineStyle: { width: 1, color: css("--surface-1") }, areaStyle: { color: c, opacity: 1 }, itemStyle: { color: c },
+               data: pairs(w.t, w.interconnectors[name], 1 / 1000) };
+    });
+    o.tooltip.formatter = (ps) => {
+      const net = ps.reduce((s, p) => s + (p.value[1] || 0), 0);
+      return tipRows(ps, " GW", 2) + `<div style="border-top:1px solid ${css("--border")};margin-top:4px;padding-top:4px;display:flex;justify-content:space-between"><span>Net import</span><b>${num(net, 2)} GW</b></div>`;
+    };
+    charts.ic.setOption(o, true);
+    setTable("ic", ["Time", ...names], w.t.map((t, i) => [t, ...o.series.map((s) => s.data[i][1])]), 2);
+  }
+
+  function drawIcNow() {
+    const g = DATA.latest.interconnectors || {};
+    const names = IC_ORDER.filter((k) => k in g);
+    const o = base();
+    o.legend = { show: false }; o.tooltip = { show: false };
+    o.grid = { left: 96, right: 44, top: 6, bottom: 6 };
+    const m = Math.max(0.1, ...names.map((k) => Math.abs(g[k] / 1000))) * 1.05;
+    o.xAxis = { type: "value", show: false, min: -m, max: m };
+    // keep category labels at the left edge (not on the zero line, where negative bars would cover them)
+    o.yAxis = { type: "category", inverse: true, data: names, axisTick: { show: false },
+                axisLine: { show: false, onZero: false }, axisLabel: { color: css("--text-primary"), fontSize: 12 } };
+    o.series = [{ type: "bar", barWidth: "58%", data: names.map((k) => ({ value: g[k] / 1000,
+        itemStyle: { color: css(`--ic-${IC_ORDER.indexOf(k) + 1}`), borderRadius: g[k] >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] },
+        label: { position: g[k] >= 0 ? "right" : "left" } })),
+      label: { show: true, color: css("--text-secondary"), fontSize: 12, formatter: (p) => num(p.value, 2) },
+      markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: css("--text-muted"), type: "solid", width: 1 }, data: [{ xAxis: 0 }] } }];
+    charts.icnow.setOption(o, true);
+    setTable("icnow", ["Counterpart", "GW"], names.map((k) => [k, g[k] / 1000]), 2, false);
+  }
+
+  // ---------- KPI tiles ----------
+  function drawKpis() {
+    const L = DATA.latest, g = L.generation || {}, ic = L.interconnectors || {};
+    const tot = Object.values(g).reduce((s, v) => s + Math.max(0, v), 0);
+    const share = (k) => tot ? Math.round(100 * (g[k] || 0) / tot) : null;
+    const net = Object.values(ic).reduce((s, v) => s + v, 0);
+    const at = (x) => x ? fmtHM.format(new Date(x.time)) : "";
+    const tiles = [
+      ["Demand (INDO)", gw(L.demand && L.demand.value), "GW", `SP ending ${at(L.demand)}`],
+      ["Wind share", share("Wind") ?? "–", "%", `${gw(g.Wind)} GW at ${L.time ? fmtHM.format(new Date(L.time)) : ""}`],
+      ["Gas share", share("Gas") ?? "–", "%", `${gw(g.Gas)} GW`],
+      ["Net imports", gw(net), "GW", `${Object.keys(ic).length} counterparts`],
+      ["System price", L.system_price ? num(L.system_price.value, 2) : "–", "£/MWh", `SP from ${at(L.system_price)}`],
+      ["Market Index (APX)", L.mid_price ? num(L.mid_price.value, 2) : "–", "£/MWh", `SP from ${at(L.mid_price)}`],
+    ];
+    document.getElementById("kpis").innerHTML = tiles.map(([l, v, u, s]) =>
+      `<div class="kpi"><div class="label">${l}</div><div class="value">${v}<small>${u}</small></div><div class="sub">${s}</div></div>`).join("");
+  }
+
+  // ---------- table view (relief for low-contrast colours + accessibility) ----------
+  const tables = {};
+  function setTable(key, head, rows, d, isTime = true) {
+    tables[key] = { head, rows: isTime ? rows.slice().reverse() : rows, d, isTime };
+    const card = document.querySelector(`[data-card="${key}"]`);
+    if (card.classList.contains("show-table")) renderTable(key);
+  }
+  function renderTable(key) {
+    const { head, rows, d, isTime } = tables[key];
+    const wrap = document.querySelector(`[data-card="${key}"] .table-wrap`);
+    wrap.innerHTML = `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${
+      rows.map((r) => `<tr>${r.map((c, j) => `<td>${j === 0 ? (isTime ? fmtTime.format(c) : c) : num(c, d)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  }
+  document.querySelectorAll("[data-toggle-table]").forEach((b) => b.addEventListener("click", () => {
+    const card = b.closest(".card"), key = card.dataset.card;
+    card.classList.toggle("show-table");
+    b.textContent = card.classList.contains("show-table") ? "Chart" : "Table";
+    if (card.classList.contains("show-table")) renderTable(key); else charts[key] && charts[key].resize();
+  }));
+
+  // ---------- orchestration ----------
+  function drawAll() {
+    if (!DATA) return;
+    const w = windowed();
+    drawKpis(); drawGen(w); drawMix(); drawPrice(w); drawNiv(w); drawIc(w); drawIcNow();
+    const gen = new Date(DATA.generated_at);
+    document.getElementById("meta").textContent = `Updated ${fmtTime.format(gen)} (UK time)`;
+    document.getElementById("footer").innerHTML = `${DATA.attribution}. ${DATA.notes.join(" ")} Data: Elexon Insights Solution.`;
+  }
+
+  async function load() {
+    const banner = document.getElementById("banner");
+    try {
+      const res = await fetch(`${DATA_URL}${DATA_URL.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      DATA = await res.json();
+      banner.style.display = "none";
+      drawAll();
+      const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
+      if (ageMin > 120) { banner.textContent = `Data is ${Math.round(ageMin / 60)} h old — the update job may have stopped.`; banner.style.display = "block"; }
+    } catch (e) {
+      banner.textContent = `Could not load data from ${DATA_URL} (${e.message}).`;
+      banner.style.display = "block";
+    }
+  }
+
+  for (const [k, id] of Object.entries({ gen: "c-gen", mix: "c-mix", price: "c-price", niv: "c-niv", ic: "c-ic", icnow: "c-icnow" }))
+    charts[k] = echarts.init(document.getElementById(id), null, { renderer: "canvas" });
+  echarts.connect([charts.gen, charts.price, charts.niv, charts.ic]); // shared crosshair across time charts
+
+  document.getElementById("range").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    HOURS = +b.dataset.hours;
+    document.querySelectorAll("#range button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    drawAll();
+  });
+  window.addEventListener("resize", () => Object.values(charts).forEach((c) => c.resize()));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+
+  load();
+  setInterval(load, (cfg.REFRESH_MINUTES || 5) * 60e3);
+})();
+</script>
+</body>
+</html>

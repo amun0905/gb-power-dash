@@ -163,3 +163,19 @@ def test_config_found_from_working_directory_and_env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GBDASH_CONFIG", str(repo_cfg))
     assert find_config() == repo_cfg
+
+
+def test_overview_export_is_aligned_and_valid_json(store):
+    import json
+    from gbdash.export import build_overview, write_overview
+    now = datetime(2025, 3, 2, 12, tzinfo=UTC)
+    pipeline.update(FUEL, store, client=FakeFuelClient(), now=now)
+    d = build_overview(store, REG, now=now)  # other datasets empty: must still work
+    n = len(d["t"])
+    assert n == 30 * 48
+    assert all(len(v) == n for v in d["generation"].values())
+    assert all(len(d[k]) == n for k in ("demand", "mid_price", "system_price", "niv"))
+    assert d["latest"]["generation"]["Wind"] == 10000 and d["latest"]["system_price"] is None
+    write_overview(store, REG, now=now)
+    with store.fs.open(f"{store.root}/web/overview.json") as f:
+        json.loads(f.read())  # strict JSON (no NaN)

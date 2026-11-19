@@ -4,6 +4,7 @@
     gbdash update [DATASET ...]
     gbdash backfill DATASET [--start 2024-01-01] [--end 2024-06-01] [--no-resume]
     gbdash status [--fail-on-stale]
+    gbdash export
 
 Storage location: --store, or env GBDASH_STORE (default ./data).
 """
@@ -53,6 +54,7 @@ def main(argv=None) -> int:
     b.add_argument("--end", type=_dt)
     b.add_argument("--no-resume", action="store_true")
     s = sub.add_parser("status"); s.add_argument("--fail-on-stale", action="store_true")
+    sub.add_parser("export", help="write web/overview.json for the website")
 
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
@@ -89,6 +91,14 @@ def main(argv=None) -> int:
         print(json.dumps(report, indent=2))
         if a.fail_on_stale:
             failures = [r["dataset"] for r in report if r["stale"]]
+
+    elif a.cmd == "export":
+        from .export import write_overview
+        try:
+            write_overview(store, registry)
+        except Exception:
+            log.exception("export failed")
+            failures.append("export")
 
     if a.cmd in ("update", "backfill"):
         manifests = [m for spec in registry.values() if (m := store.manifest(spec))]

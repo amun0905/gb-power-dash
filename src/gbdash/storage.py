@@ -91,8 +91,10 @@ class Store:
             lambda f: df.to_parquet(f, index=False, compression="zstd"),
         )
 
-    def _write_json(self, path: str, obj: dict) -> None:
-        data = json.dumps(obj, indent=2, default=str).encode()
+    def write_json(self, path: str, obj: dict, compact: bool = False) -> None:
+        """Write JSON (NaN is not valid JSON, so callers must convert NaN to None)."""
+        kw = {"separators": (",", ":")} if compact else {"indent": 2}
+        data = json.dumps(obj, default=str, allow_nan=False, **kw).encode()
         self._write_bytes_atomic(path, lambda f: f.write(data))
 
     # --- public -----------------------------------------------------------
@@ -172,11 +174,11 @@ class Store:
             "partitions": periods,
             "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
-        self._write_json(f"{self._dir(spec.name)}/_manifest.json", m)
+        self.write_json(f"{self._dir(spec.name)}/_manifest.json", m)
         return m
 
     def write_catalog(self, manifests: list[dict]) -> None:
-        self._write_json(
+        self.write_json(
             f"{self.root}/catalog.json",
             {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
              "datasets": {m["name"]: m for m in manifests}},
