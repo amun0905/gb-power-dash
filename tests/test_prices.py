@@ -116,3 +116,15 @@ def test_prices_export_converts_eur_and_aligns(tmp_path):
     i = d["t"].index(int(pd.Timestamp("2026-11-20T10:00Z").timestamp() * 1000))  # tomorrow, rate carried forward
     assert d["neighbours"]["France"][i] == 85.0 and d["gb_da"][i] == 100.0
     json.dumps(d, allow_nan=False)
+
+
+@responses.activate
+def test_entsoe_requests_xml(monkeypatch):
+    from gbdash.sources.entsoe import BASE_URL
+    monkeypatch.setenv("ENTSOE_API_TOKEN", "t")
+    responses.add(responses.GET, BASE_URL, body=A44, content_type="text/xml")
+    spec = REG["da_europe"]
+    from dataclasses import replace
+    spec = replace(spec, options={"zones": ["FR"]})
+    df = next(EntsoeClient().fetch(spec, datetime(2026, 11, 18, 23, tzinfo=UTC), datetime(2026, 11, 19, 1, tzinfo=UTC)))
+    assert "xml" in responses.calls[0].request.headers["Accept"] and not df.empty

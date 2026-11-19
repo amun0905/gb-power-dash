@@ -17,7 +17,7 @@
     /* prices */
     --price-mid: #2a78d6; --price-sys: #eb6834;
     /* diverging poles for NIV */
-    --div-neg: #2a78d6; --div-pos: #e34948;
+    --div-neg: #2a78d6; --div-pos: #e34948; --div-mid: #f0efec;
     --demand: #0b0b0b;
   }
   @media (prefers-color-scheme: dark) {
@@ -29,7 +29,7 @@
       --fuel-gas: #d95926; --fuel-ps: #199e70; --fuel-other: #c98500; --fuel-imports: #d55181;
       --ic-1: #3987e5; --ic-2: #d95926; --ic-3: #199e70; --ic-4: #c98500; --ic-5: #d55181; --ic-6: #0ca30c; --ic-7: #9085e9;
       --price-mid: #3987e5; --price-sys: #d95926;
-      --div-neg: #3987e5; --div-pos: #e66767;
+      --div-neg: #3987e5; --div-pos: #e66767; --div-mid: #383835;
       --demand: #f0efec;
     }
   }

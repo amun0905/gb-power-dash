@@ -83,6 +83,13 @@ Check each source's terms before any commercial use.
 `gbdash export` also writes `web/prices.json` (hourly, 30 days back plus tomorrow).
 If `ENTSOE_API_TOKEN` is missing, the ENTSO-E dataset is skipped with a warning rather than failing the run.
 
+## Strategies tab (`site/strategies.html`)
+
+A backtest of buying 1 MW in the N2EX day-ahead auction for each hour of a block (EFA 1–6, Peak, Baseload),
+then closing the position by selling at MID or by settling at the system price. `gbdash export` writes
+`web/strategies.json` with daily P&L, traded MWh, possible MWh and an hour × month spread heatmap, starting from `da_gb_n2ex.start`.
+MID is a volume-weighted index rather than an executable price, and the backtest includes no fees or slippage.
+
 ## Website (`site/`)
 
 A static page (`site/index.html` with ECharts) that reads `web/overview.json` from the bucket.

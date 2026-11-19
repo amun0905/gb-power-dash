@@ -132,7 +132,7 @@ datasets:
     path: ""
     time_column: startTime
     keys: [startTime, zone]
-    chunk_days: 31
+    chunk_days: 31              # ENTSO-E is slow per request (~8 s), so ask for a month at a time
     lookback_days: 2
     horizon_days: 2
     start: "2024-01-01"

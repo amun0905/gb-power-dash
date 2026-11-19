@@ -101,7 +101,8 @@ def main(argv=None) -> int:
     elif a.cmd == "export":
         from .export import write_overview
         from .export_prices import write_prices
-        for name, fn in (("overview", write_overview), ("prices", write_prices)):
+        from .export_strategies import write_strategies
+        for name, fn in (("overview", write_overview), ("prices", write_prices), ("strategies", write_strategies)):
             try:
                 fn(store, registry)
             except Exception:

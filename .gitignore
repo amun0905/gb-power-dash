@@ -5,3 +5,4 @@ __pycache__/
 data/
 *.tmp
 .env
+entsoe_debug_*.json
