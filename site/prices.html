@@ -31,7 +31,7 @@
       <div class="card-head"><h2>GB day-ahead vs short-term prices</h2><span class="unit">£/MWh · hourly</span>
         <span class="tools"><button data-toggle-table>Table</button></span></div>
       <div class="chart" id="c-gbp"></div><div class="table-wrap"></div>
-      <p class="note">Day-ahead = Nord Pool N2EX hourly auction. MID and system price are hourly averages of the half-hourly values. Shaded area = delivery periods still ahead (day-ahead results already known).</p>
+      <p class="note">Day-ahead = Nord Pool N2EX hourly auction. Market Index and system price are hourly averages of the half-hourly values. Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour. Shaded area = delivery periods still ahead (day-ahead results already known).</p>
     </article>
 
     <article class="card span-12" data-card="eu">
@@ -135,13 +135,13 @@
     const o = base();
     o.series = [
       line("GB day-ahead (N2EX)", css("--demand"), pairs(w.t, w.gb), 2, true),
-      line("Market Index (APX)", css("--price-mid"), pairs(w.t, w.mid)),
+      line("Market Index (EPEX)", css("--price-mid"), pairs(w.t, w.mid)),
       line("System price", css("--price-sys"), pairs(w.t, w.sys)),
     ];
     o.series[0].markArea = futureShade(w.t);
     o.tooltip.formatter = (ps) => tip(ps, " £/MWh", 2);
     charts.gbp.setOption(o, true);
-    setTable("gbp", ["Time", "GB day-ahead", "MID", "System price"], w.t.map((t, i) => [t, w.gb[i], w.mid[i], w.sys[i]]), 2);
+    setTable("gbp", ["Time", "GB day-ahead", "Market Index", "System price"], w.t.map((t, i) => [t, w.gb[i], w.mid[i], w.sys[i]]), 2);
   }
 
   function drawEu(w) {
@@ -208,7 +208,7 @@
     const tiles = [
       ["GB day-ahead today", num(gbToday, 2), "£/MWh", "Baseload average, UK day"],
       ["GB day-ahead tomorrow", gbTom == null ? "–" : num(gbTom, 2), gbTom == null ? "" : "£/MWh", gbTom == null ? "Not yet published (auction late morning)" : "Baseload average, UK day"],
-      ["Day-ahead minus MID", num(mean(prem), 2), "£/MWh", `Average over last ${rangeLbl}`],
+      ["Day-ahead minus Market Index", num(mean(prem), 2), "£/MWh", `Average over last ${rangeLbl}`],
       ["Cheapest neighbour today", nbToday.length ? num(nbToday[0][1], 1) : "–", nbToday.length ? "£/MWh" : "", nbToday.length ? nbToday[0][0] : "Needs ENTSO-E data"],
       ["Priciest neighbour today", nbToday.length ? num(nbToday[nbToday.length - 1][1], 1) : "–", nbToday.length ? "£/MWh" : "", nbToday.length ? nbToday[nbToday.length - 1][0] : "Needs ENTSO-E data"],
       ["EUR → GBP", P.fx ? num(P.fx.gbp_per_eur, 4) : "–", "", P.fx ? `ECB reference rate, ${P.fx.date}` : "Not loaded yet"],

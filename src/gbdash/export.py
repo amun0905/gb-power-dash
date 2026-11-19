@@ -137,7 +137,7 @@ def build_overview(store: Store, registry: dict[str, DatasetSpec], now: datetime
         "notes": [
             "Generation is transmission-metered (FUELINST); embedded solar and small wind are not included.",
             "Interconnector flows: positive = import into GB, negative = export.",
-            f"Market Index Data shown for provider {MID_PROVIDER}.",
+            "Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour.",
         ],
     }
     # Unmapped fuels would silently vanish from the stack; make that visible in the logs.

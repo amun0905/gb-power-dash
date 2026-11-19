@@ -25,7 +25,7 @@
   <span class="spacer"></span>
   <div class="controls">
     <div class="seg" role="group" aria-label="Exit" id="exit">
-      <button data-mode="mid" aria-pressed="true">Sell at MID</button>
+      <button data-mode="mid" aria-pressed="true">Sell at Market Index</button>
       <button data-mode="imbalance">Settle at imbalance</button>
     </div>
     <div class="seg" role="group" aria-label="Period" id="range">
@@ -41,7 +41,7 @@
 
   <section class="grid">
     <article class="card span-12" data-card="cum">
-      <div class="card-head"><h2 id="cum-title">Cumulative P&amp;L: long N2EX day-ahead, sold at MID</h2><span class="unit">£ · 1 MW held in every hour of the block</span>
+      <div class="card-head"><h2 id="cum-title">Cumulative P&amp;L: long N2EX day-ahead, sold at Market Index</h2><span class="unit">£ · 1 MW held in every hour of the block</span>
         <span class="tools"><button data-toggle-table>Table</button></span></div>
       <div class="chart tall" id="c-cum"></div><div class="table-wrap"></div>
       <p class="note">Rising line = the day-ahead auction was cheaper than the exit price in that block. Click a block in the legend to hide or show it.</p>
@@ -70,7 +70,7 @@
   const params = new URLSearchParams(location.search);
   const URL_ = params.get("strategies") || cfg.STRATEGIES_URL || (cfg.DATA_URL || "").replace(/overview\.json.*$/, "") + "strategies.json";
   const COLORS = ["--ic-1", "--ic-2", "--ic-3", "--ic-4", "--ic-5", "--ic-6", "--ic-7", "--demand"]; // EFA1-6, Peak, Baseload
-  const EXIT_LABEL = { mid: "sold at MID", imbalance: "settled at system price" };
+  const EXIT_LABEL = { mid: "sold at Market Index", imbalance: "settled at system price" };
 
   let S = null, MODE = "mid", DAYS = 0;
   const charts = {};
@@ -210,7 +210,7 @@
     if (!S || !S.dates.length) return;
     const st = stats();
     document.getElementById("cum-title").textContent = `Cumulative P&L: long N2EX day-ahead, ${EXIT_LABEL[MODE]}`;
-    document.getElementById("heat-title").textContent = `Average ${MODE === "mid" ? "MID" : "system price"} minus day-ahead, by hour and month`;
+    document.getElementById("heat-title").textContent = `Average ${MODE === "mid" ? "Market Index" : "system price"} minus day-ahead, by hour and month`;
     document.getElementById("sum-unit").textContent = `${EXIT_LABEL[MODE]} · selected period`;
     drawKpis(st); drawCum(st); drawSummary(st); drawHeat();
     document.getElementById("meta").textContent = `Updated ${new Date(S.generated_at).toLocaleString("en-GB", { timeZone: "Europe/London", dateStyle: "medium", timeStyle: "short" })} (UK time)`;

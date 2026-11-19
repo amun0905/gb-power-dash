@@ -117,7 +117,8 @@ datasets:
     max_staleness_hours: 30     # published once a day for the next day
     options:
       resource_id: 4f27eea5-7038-4f73-9740-e3e4ad47c26a
-      # Delivery periods in this file are GMT/UTC, not UK clock time (confirmed with scripts/check_da_alignment.py)
+      # Delivery periods in this file are GMT/UTC, not UK clock time: confirmed with
+      # scripts/check_da_alignment.py (best fit vs MID was +1 h in summer, 0 h in winter when read as UK time).
       timezone: UTC
     columns:
       startTime: datetime

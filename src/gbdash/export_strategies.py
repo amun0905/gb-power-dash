@@ -126,7 +126,7 @@ def build_strategies(store: Store, registry: dict[str, DatasetSpec], now: dateti
         "attribution": [attribution("neso"), attribution("elexon")],
         "notes": [
             "Long 1 MW in the N2EX day-ahead auction for every hour of the block, closed out at the exit price.",
-            "MID exit: sold at the APX Market Index price (volume-weighted short-term trades), an intraday proxy rather than an executable price.",
+            "Market Index exit: sold at the Market Index (EPEX) price, an intraday proxy rather than an executable price. Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour.",
             "Imbalance exit: position left open and settled at the system price.",
             "No fees, bid-ask spread or slippage. Half-hours missing either price are skipped (see coverage).",
             "EFA blocks and days in UK time; an EFA day starts at 23:00 the evening before.",

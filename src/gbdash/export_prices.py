@@ -80,7 +80,7 @@ def build_prices(store: Store, registry: dict[str, DatasetSpec], now: datetime |
         "attribution": [a for a in (attribution("neso"), attribution("entsoe"), attribution("ecb"), attribution("elexon")) if a],
         "notes": [
             "All prices in £/MWh, hourly averages. Continental prices converted from EUR at the latest ECB reference rate for each day.",
-            "GB day-ahead = Nord Pool N2EX hourly auction. MID and system price are hourly averages of half-hourly values.",
+            "GB day-ahead = Nord Pool N2EX hourly auction. Market Index and system price are hourly averages of half-hourly values. Market Index (EPEX) = Elexon's Market Index Data from the EPEX SPOT provider (formerly APX): the volume-weighted price of short-term exchange trades for each half-hour.",
             "SDAC zones clear in 15-minute periods; these are averaged to hourly.",
         ],
     }
