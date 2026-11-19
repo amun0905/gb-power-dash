@@ -7,7 +7,7 @@ on:
       datasets:
         description: "Space-separated dataset names"
         required: true
-        default: "generation_fuelinst demand_indo market_index_mid system_prices"
+        default: "generation_fuelinst demand_indo market_index_mid system_prices da_gb_n2ex da_europe fx_eurgbp"
       start:
         description: "Start date (YYYY-MM-DD); blank = each dataset's configured start"
         required: false
@@ -31,6 +31,7 @@ jobs:
       GBDASH_S3_ENDPOINT: ${{ secrets.GBDASH_S3_ENDPOINT }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ENTSOE_API_TOKEN: ${{ secrets.ENTSOE_API_TOKEN }}       # optional: ENTSO-E datasets are skipped without it
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

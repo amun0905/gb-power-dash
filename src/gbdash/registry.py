@@ -47,12 +47,14 @@ class DatasetSpec:
     chunk_days: int = 1
     lookback_days: int = 2
     max_staleness_hours: float = 6
+    horizon_days: int = 0                      # fetch this far into the future (day-ahead data)
+    options: dict = field(default_factory=dict)  # source-specific settings (zones, resource ids, ...)
 
     def validate(self) -> None:
         problems = []
         if self.query not in VALID_QUERIES:
             problems.append(f"query must be one of {VALID_QUERIES}")
-        if self.query == "window" and not {"from", "to"} <= set(self.params):
+        if self.source == "elexon" and self.query == "window" and not {"from", "to"} <= set(self.params):
             problems.append("window datasets need params.from and params.to")
         if self.query == "settlement_date" and "{date}" not in self.path:
             problems.append("settlement_date datasets need {date} in path")

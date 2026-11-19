@@ -100,3 +100,63 @@ datasets:
       systemSellPrice: float
       systemBuyPrice: float
       netImbalanceVolume: float
+
+  # ---------------- day-ahead prices ----------------
+
+  da_gb_n2ex:
+    description: GB day-ahead auction price (Nord Pool N2EX), £/MWh, via NESO Data Portal
+    source: neso
+    query: window
+    path: ""
+    time_column: startTime
+    keys: [startTime]
+    chunk_days: 31
+    lookback_days: 3
+    horizon_days: 2
+    start: "2024-01-01"
+    max_staleness_hours: 30     # published once a day for the next day
+    options:
+      resource_id: 4f27eea5-7038-4f73-9740-e3e4ad47c26a
+      # If auto-detection picks the wrong columns, pin them here, e.g.:
+      # time_column: "Delivery Start (GMT)"
+      # price_column: "Price"
+      # timezone: UTC
+    columns:
+      startTime: datetime
+      price: float
+
+  da_europe:
+    description: Day-ahead prices for GB's neighbours (ENTSO-E A44), EUR/MWh
+    source: entsoe
+    query: window
+    path: ""
+    time_column: startTime
+    keys: [startTime, zone]
+    chunk_days: 31
+    lookback_days: 2
+    horizon_days: 2
+    start: "2024-01-01"
+    max_staleness_hours: 30
+    options:
+      zones: [FR, BE, NL, NO2, DK1, IE_SEM, DE_LU]
+    columns:
+      startTime: datetime
+      zone: str
+      price: float
+      currency: str
+      resolution_min: int
+
+  fx_eurgbp:
+    description: ECB reference rate, GBP per 1 EUR (daily)
+    source: ecb
+    query: window
+    path: ""
+    time_column: startTime
+    keys: [startTime]
+    chunk_days: 400
+    lookback_days: 5
+    start: "2024-01-01"
+    max_staleness_hours: 100    # no fixings at weekends/holidays
+    columns:
+      startTime: datetime
+      rate: float

@@ -7,103 +7,13 @@
 <link rel="icon" href="data:,">
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-<style>
-  /* ---------- tokens (light) ---------- */
-  :root {
-    color-scheme: light;
-    --page: #f4f4f1;
-    --surface-1: #fcfcfb;
-    --border: #e3e2dd;
-    --grid: #ecebe7;
-    --text-primary: #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted: #7a7974;
-    --accent: #2a78d6;
-    /* supply-stack identities (validated as an 8-slot adjacent order, bottom->top, light & dark) */
-    --fuel-nuclear: #6250d6; --fuel-biomass: #008300; --fuel-hydro: #e34948; --fuel-wind: #2a78d6;
-    --fuel-gas: #eb6834; --fuel-ps: #1baf7a; --fuel-other: #eda100; --fuel-imports: #e87ba4;
-    /* interconnector counterparts (default categorical order 1-7) */
-    --ic-1: #2a78d6; --ic-2: #eb6834; --ic-3: #1baf7a; --ic-4: #eda100; --ic-5: #e87ba4; --ic-6: #008300; --ic-7: #6250d6;
-    /* prices */
-    --price-mid: #2a78d6; --price-sys: #eb6834;
-    /* diverging poles for NIV */
-    --div-neg: #2a78d6; --div-pos: #e34948;
-    --demand: #0b0b0b;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --page: #121211; --surface-1: #1a1a19; --border: #2c2c2a; --grid: #262624;
-      --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --accent: #3987e5;
-      --fuel-nuclear: #9085e9; --fuel-biomass: #0ca30c; --fuel-hydro: #e66767; --fuel-wind: #3987e5;
-      --fuel-gas: #d95926; --fuel-ps: #199e70; --fuel-other: #c98500; --fuel-imports: #d55181;
-      --ic-1: #3987e5; --ic-2: #d95926; --ic-3: #199e70; --ic-4: #c98500; --ic-5: #d55181; --ic-6: #0ca30c; --ic-7: #9085e9;
-      --price-mid: #3987e5; --price-sys: #d95926;
-      --div-neg: #3987e5; --div-pos: #e66767;
-      --demand: #f0efec;
-    }
-  }
-
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--page); color: var(--text-primary);
-         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-         font-variant-numeric: tabular-nums; }
-  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-           padding: 14px 24px; background: var(--surface-1); border-bottom: 1px solid var(--border);
-           position: sticky; top: 0; z-index: 5; }
-  header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
-  header .meta { color: var(--text-secondary); font-size: 12.5px; }
-  header .spacer { flex: 1; }
-  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .seg button { border: 0; background: transparent; color: var(--text-secondary); padding: 6px 12px;
-                font: inherit; font-size: 13px; cursor: pointer; }
-  .seg button + button { border-left: 1px solid var(--border); }
-  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-  main { padding: 18px 24px 32px; max-width: 1560px; margin: 0 auto; }
-
-  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-  .kpi { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-  .kpi .label { color: var(--text-secondary); font-size: 12px; }
-  .kpi .value { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; }
-  .kpi .value small { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
-  .kpi .sub { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
-
-  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
-  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
-          padding: 14px 16px 8px; display: flex; flex-direction: column; min-width: 0; }
-  .span-8 { grid-column: span 8; } .span-4 { grid-column: span 4; } .span-6 { grid-column: span 6; }
-  .card-head { display: flex; align-items: baseline; gap: 10px; }
-  .card h2 { font-size: 14px; margin: 0; font-weight: 620; }
-  .card .unit { color: var(--text-muted); font-size: 12px; }
-  .card .tools { margin-left: auto; }
-  .card .tools button { border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
-                        border-radius: 6px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer; }
-  .chart { height: 340px; width: 100%; }
-  .chart.short { height: 260px; }
-  .note { color: var(--text-muted); font-size: 11.5px; margin: 2px 0 6px; }
-  .key { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; }
-  .key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-  .table-wrap { max-height: 340px; overflow: auto; display: none; }
-  .card.show-table .table-wrap { display: block; }
-  .card.show-table .chart { display: none; }
-  table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
-  th:first-child, td:first-child { text-align: left; }
-  th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-secondary); font-weight: 600; }
-  .banner { display: none; background: #d03b3b; color: #fff; padding: 10px 24px; font-size: 13px; }
-  footer { color: var(--text-muted); font-size: 11.5px; padding: 0 24px 24px; max-width: 1560px; margin: 0 auto; }
-
-  @media (max-width: 1100px) {
-    .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .span-8, .span-4, .span-6 { grid-column: span 12; }
-  }
-  @media (max-width: 560px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } main, header { padding-left: 12px; padding-right: 12px; } }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="banner" id="banner" role="alert"></div>
 <header>
-  <h1>GB Power Market · Overview</h1>
+  <h1>GB Power Market</h1>
+  <nav class="tabs" aria-label="Pages"><a href="./" aria-current="page">Overview</a><a href="prices.html">Prices</a></nav>
   <span class="meta" id="meta">Loading…</span>
   <span class="spacer"></span>
   <div class="seg" role="group" aria-label="Time range" id="range">

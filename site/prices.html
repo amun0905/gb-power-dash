@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GB Power Market · Prices</title>
+<link rel="icon" href="data:,">
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="banner" id="banner" role="alert"></div>
+<header>
+  <h1>GB Power Market</h1>
+  <nav class="tabs" aria-label="Pages"><a href="./">Overview</a><a href="prices.html" aria-current="page">Prices</a></nav>
+  <span class="meta" id="meta">Loading…</span>
+  <span class="spacer"></span>
+  <div class="seg" role="group" aria-label="Time range" id="range">
+    <button data-hours="48">48h</button>
+    <button data-hours="168" aria-pressed="true">7d</button>
+    <button data-hours="720">30d</button>
+  </div>
+</header>
+
+<main>
+  <section class="kpis" id="kpis" aria-label="Headline prices"></section>
+
+  <section class="grid">
+    <article class="card span-12" data-card="gbp">
+      <div class="card-head"><h2>GB day-ahead vs short-term prices</h2><span class="unit">£/MWh · hourly</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart" id="c-gbp"></div><div class="table-wrap"></div>
+      <p class="note">Day-ahead = Nord Pool N2EX hourly auction. MID and system price are hourly averages of the half-hourly values. Shaded area = delivery periods still ahead (day-ahead results already known).</p>
+    </article>
+
+    <article class="card span-12" data-card="eu">
+      <div class="card-head"><h2>Day-ahead prices: GB and neighbouring markets</h2><span class="unit">£/MWh · hourly</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart" id="c-eu"></div><div class="table-wrap"></div>
+      <p class="note" id="eu-note">Click a market in the legend to hide or show it. Continental prices converted from EUR at the ECB reference rate; 15-minute prices averaged to hourly.</p>
+    </article>
+
+    <article class="card span-6" data-card="spread">
+      <div class="card-head"><h2>Average day-ahead spread vs GB</h2><span class="unit">£/MWh · neighbour − GB</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart short" id="c-spread"></div><div class="table-wrap"></div>
+      <p class="note">Over the selected range up to now. Positive = neighbour more expensive than GB, which usually pulls power out of GB.</p>
+    </article>
+
+    <article class="card span-6" data-card="flow">
+      <div class="card-head"><h2>Average interconnector flow</h2><span class="unit">GW · + import / − export</span>
+        <span class="tools"><button data-toggle-table>Table</button></span></div>
+      <div class="chart short" id="c-flow"></div><div class="table-wrap"></div>
+      <p class="note">Same period, from the overview data. Compare with the spreads: flows normally run from the cheaper market to the dearer one.</p>
+    </article>
+  </section>
+</main>
+<footer id="footer"></footer>
+
+<script>
+(() => {
+  const cfg = window.GBDASH_CONFIG || {};
+  const params = new URLSearchParams(location.search);
+  const base_url = (cfg.DATA_URL || "").replace(/overview\.json.*$/, "");
+  const PRICES_URL = params.get("prices") || cfg.PRICES_URL || base_url + "prices.json";
+  const OVERVIEW_URL = params.get("data") || cfg.DATA_URL;
+  const TZ = "Europe/London";
+
+  // Neighbour identity colours match the interconnector colours on the overview page.
+  const MARKETS = [
+    ["France", "--ic-1", "France"], ["Belgium", "--ic-2", "Belgium"], ["Netherlands", "--ic-3", "Netherlands"],
+    ["Norway (NO2)", "--ic-4", "Norway"], ["Denmark (DK1)", "--ic-5", "Denmark"], ["Ireland (SEM)", "--ic-6", "Ireland & NI"],
+    ["Germany", "--ic-7", null],
+  ]; // [name in prices.json, colour var, counterpart name in overview.json]
+
+  let P = null, O = null, HOURS = 168;
+  const charts = {};
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const fmtTime = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const fmtHM = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+  const fmtDay = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "2-digit", month: "short" });
+  const ukDate = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+  const num = (v, d = 1) => v == null || Number.isNaN(v) ? "–" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const mean = (a) => { const v = a.filter((x) => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+
+  // ---------- windows ----------
+  function idxFrom(t, from) { let i = t.findIndex((x) => x >= from); return i < 0 ? t.length : i; }
+  function lastDataIndex() {
+    // last hour with any day-ahead price (GB or neighbour) so the chart ends where the data ends
+    const series = [P.gb_da, ...Object.values(P.neighbours)];
+    for (let i = P.t.length - 1; i >= 0; i--) if (series.some((s) => s[i] != null)) return i;
+    return P.t.length - 1;
+  }
+  function win() {
+    const i0 = idxFrom(P.t, P.now - HOURS * 3600e3), i1 = lastDataIndex() + 1;
+    const sl = (a) => a.slice(i0, i1);
+    return { t: sl(P.t), gb: sl(P.gb_da), mid: sl(P.mid_price), sys: sl(P.system_price),
+             nb: Object.fromEntries(Object.entries(P.neighbours).map(([k, v]) => [k, sl(v)])) };
+  }
+  const pairs = (t, a) => t.map((x, i) => [x, a[i]]);
+
+  // ---------- shared chart bits ----------
+  function base() {
+    const ink2 = css("--text-secondary"), grid = css("--grid");
+    return {
+      animation: false,
+      textStyle: { fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", color: ink2 },
+      grid: { left: 52, right: 16, top: 36, bottom: 28 },
+      legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10, itemGap: 12, textStyle: { color: ink2, fontSize: 12 } },
+      xAxis: { type: "time", axisLine: { lineStyle: { color: grid } }, axisTick: { show: false }, splitLine: { show: false },
+               axisLabel: { color: css("--text-muted"), fontSize: 11, hideOverlap: true, formatter: (v) => HOURS <= 48 ? fmtHM.format(v) : fmtDay.format(v) } },
+      yAxis: { type: "value", scale: true, axisLabel: { color: css("--text-muted"), fontSize: 11 }, splitLine: { lineStyle: { color: grid } } },
+      tooltip: { trigger: "axis", transitionDuration: 0, confine: true,
+                 axisPointer: { type: "line", lineStyle: { color: css("--text-muted"), type: "dashed" } },
+                 backgroundColor: css("--surface-1"), borderColor: css("--border"), textStyle: { color: css("--text-primary"), fontSize: 12 } },
+    };
+  }
+  function tip(ps, unit, d) {
+    if (!ps.length) return "";
+    const rows = ps.filter((p) => p.value[1] != null).sort((a, b) => b.value[1] - a.value[1]).map((p) =>
+      `<div style="display:flex;gap:10px;justify-content:space-between"><span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${p.color};margin-right:6px"></span>${p.seriesName}</span><b>${num(p.value[1], d)}${unit}</b></div>`).join("");
+    return `<div style="font-weight:600;margin-bottom:4px">${fmtTime.format(ps[0].value[0])}</div>${rows}`;
+  }
+  function futureShade(t) {
+    if (!t.length || t[t.length - 1] <= P.now) return undefined;
+    return { silent: true, itemStyle: { color: css("--grid"), opacity: 0.6 }, data: [[{ xAxis: P.now }, { xAxis: t[t.length - 1] }]] };
+  }
+  function line(name, color, data, width = 2, step = false) {
+    return { name, type: "line", symbol: "none", step: step ? "start" : false, lineStyle: { width, color }, itemStyle: { color }, data };
+  }
+
+  // ---------- charts ----------
+  function drawGbp(w) {
+    const o = base();
+    o.series = [
+      line("GB day-ahead (N2EX)", css("--demand"), pairs(w.t, w.gb), 2, true),
+      line("Market Index (APX)", css("--price-mid"), pairs(w.t, w.mid)),
+      line("System price", css("--price-sys"), pairs(w.t, w.sys)),
+    ];
+    o.series[0].markArea = futureShade(w.t);
+    o.tooltip.formatter = (ps) => tip(ps, " £/MWh", 2);
+    charts.gbp.setOption(o, true);
+    setTable("gbp", ["Time", "GB day-ahead", "MID", "System price"], w.t.map((t, i) => [t, w.gb[i], w.mid[i], w.sys[i]]), 2);
+  }
+
+  function drawEu(w) {
+    const o = base();
+    const avail = MARKETS.filter(([n]) => n in w.nb);
+    o.series = [line("GB", css("--demand"), pairs(w.t, w.gb), 2.5, true),
+                ...avail.map(([n, c]) => line(n, css(c), pairs(w.t, w.nb[n]), 1.5, true))];
+    o.series[0].markArea = futureShade(w.t);
+    o.tooltip.formatter = (ps) => tip(ps, " £/MWh", 1);
+    charts.eu.setOption(o, true);
+    document.getElementById("eu-note").textContent = (avail.length ? "Click a market in the legend to hide or show it. "
+      : "Neighbouring markets appear once the ENTSO-E token is configured and the first update has run. ")
+      + "Continental prices converted from EUR at the ECB reference rate; 15-minute prices averaged to hourly.";
+    setTable("eu", ["Time", "GB", ...avail.map(([n]) => n)], w.t.map((t, i) => [t, w.gb[i], ...avail.map(([n]) => w.nb[n][i])]), 1);
+  }
+
+  function hbar(chart, key, rows, unit, d, labelHead) {
+    const o = base();
+    o.legend = { show: false }; o.tooltip = { show: false };
+    const m = Math.max(1e-9, ...rows.map((r) => Math.abs(r.v ?? 0))) * 1.3; // headroom for value labels
+    o.grid = { left: 104, right: 52, top: 6, bottom: 6 };
+    o.xAxis = { type: "value", show: false, min: -m, max: m };
+    o.yAxis = { type: "category", inverse: true, data: rows.map((r) => r.name), axisTick: { show: false },
+                axisLine: { show: false, onZero: false }, axisLabel: { color: css("--text-primary"), fontSize: 12 } };
+    o.series = [{ type: "bar", barWidth: "58%",
+      data: rows.map((r) => ({ value: r.v, itemStyle: { color: css(r.color), borderRadius: (r.v ?? 0) >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] },
+                                 label: { position: (r.v ?? 0) >= 0 ? "right" : "left" } })),
+      label: { show: true, color: css("--text-secondary"), fontSize: 12, formatter: (p) => p.value == null ? "n/a" : num(p.value, d) },
+      markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: css("--text-muted"), type: "solid", width: 1 }, data: [{ xAxis: 0 }] } }];
+    chart.setOption(o, true);
+    setTable(key, [labelHead, unit], rows.map((r) => [r.name, r.v]), d, false);
+  }
+
+  function drawSpreadAndFlow() {
+    const i0 = idxFrom(P.t, P.now - HOURS * 3600e3), i1 = idxFrom(P.t, P.now);
+    const spreads = MARKETS.filter(([n]) => n in P.neighbours).map(([n, c]) => {
+      const diffs = [];
+      for (let i = i0; i < i1; i++) { const a = P.neighbours[n][i], g = P.gb_da[i]; if (a != null && g != null) diffs.push(a - g); }
+      return { name: n, color: c, v: mean(diffs) };
+    });
+    hbar(charts.spread, "spread", spreads, "£/MWh", 1, "Market");
+
+    let flows = [];
+    if (O) {
+      const j0 = idxFrom(O.t, P.now - HOURS * 3600e3), j1 = idxFrom(O.t, P.now);
+      flows = MARKETS.filter(([, , ic]) => ic && ic in O.interconnectors).map(([n, c, ic]) => {
+        const v = mean(O.interconnectors[ic].slice(j0, j1));
+        return { name: n, color: c, v: v == null ? null : v / 1000 };
+      });
+    }
+    hbar(charts.flow, "flow", flows, "GW", 2, "Counterpart");
+  }
+
+  // ---------- KPIs ----------
+  function drawKpis() {
+    const today = ukDate.format(P.now), tomorrow = ukDate.format(P.now + 86400e3);
+    const dayMean = (arr, day) => mean(P.t.map((t, i) => ukDate.format(t) === day ? arr[i] : null));
+    const gbToday = dayMean(P.gb_da, today), gbTom = dayMean(P.gb_da, tomorrow);
+    const i0 = idxFrom(P.t, P.now - HOURS * 3600e3), i1 = idxFrom(P.t, P.now);
+    const prem = [];
+    for (let i = i0; i < i1; i++) if (P.gb_da[i] != null && P.mid_price[i] != null) prem.push(P.gb_da[i] - P.mid_price[i]);
+    const nbToday = Object.entries(P.neighbours).map(([n, a]) => [n, dayMean(a, today)]).filter(([, v]) => v != null).sort((a, b) => a[1] - b[1]);
+    const rangeLbl = HOURS <= 48 ? "48h" : HOURS <= 168 ? "7 days" : "30 days";
+    const tiles = [
+      ["GB day-ahead today", num(gbToday, 2), "£/MWh", "Baseload average, UK day"],
+      ["GB day-ahead tomorrow", gbTom == null ? "–" : num(gbTom, 2), gbTom == null ? "" : "£/MWh", gbTom == null ? "Not yet published (auction late morning)" : "Baseload average, UK day"],
+      ["Day-ahead minus MID", num(mean(prem), 2), "£/MWh", `Average over last ${rangeLbl}`],
+      ["Cheapest neighbour today", nbToday.length ? num(nbToday[0][1], 1) : "–", nbToday.length ? "£/MWh" : "", nbToday.length ? nbToday[0][0] : "Needs ENTSO-E data"],
+      ["Priciest neighbour today", nbToday.length ? num(nbToday[nbToday.length - 1][1], 1) : "–", nbToday.length ? "£/MWh" : "", nbToday.length ? nbToday[nbToday.length - 1][0] : "Needs ENTSO-E data"],
+      ["EUR → GBP", P.fx ? num(P.fx.gbp_per_eur, 4) : "–", "", P.fx ? `ECB reference rate, ${P.fx.date}` : "Not loaded yet"],
+    ];
+    document.getElementById("kpis").innerHTML = tiles.map(([l, v, u, s]) =>
+      `<div class="kpi"><div class="label">${l}</div><div class="value">${v}<small>${u}</small></div><div class="sub">${s}</div></div>`).join("");
+  }
+
+  // ---------- table view ----------
+  const tables = {};
+  function setTable(key, head, rows, d, isTime = true) {
+    tables[key] = { head, rows: isTime ? rows.slice().reverse() : rows, d, isTime };
+    if (document.querySelector(`[data-card="${key}"]`).classList.contains("show-table")) renderTable(key);
+  }
+  function renderTable(key) {
+    const { head, rows, d, isTime } = tables[key];
+    document.querySelector(`[data-card="${key}"] .table-wrap`).innerHTML = `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${
+      rows.map((r) => `<tr>${r.map((c, j) => `<td>${j === 0 ? (isTime ? fmtTime.format(c) : c) : num(c, d)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  }
+  document.querySelectorAll("[data-toggle-table]").forEach((b) => b.addEventListener("click", () => {
+    const card = b.closest(".card"), key = card.dataset.card;
+    card.classList.toggle("show-table");
+    b.textContent = card.classList.contains("show-table") ? "Chart" : "Table";
+    if (card.classList.contains("show-table")) renderTable(key); else charts[key] && charts[key].resize();
+  }));
+
+  // ---------- orchestration ----------
+  function drawAll() {
+    if (!P) return;
+    const w = win();
+    drawKpis(); drawGbp(w); drawEu(w); drawSpreadAndFlow();
+    document.getElementById("meta").textContent = `Updated ${fmtTime.format(new Date(P.generated_at))} (UK time)`;
+    document.getElementById("footer").innerHTML = `${P.attribution.join(" · ")}. ${P.notes.join(" ")}`;
+  }
+  async function getJson(url) {
+    const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    return res.json();
+  }
+  async function load() {
+    const banner = document.getElementById("banner");
+    try {
+      const [p, o] = await Promise.allSettled([getJson(PRICES_URL), getJson(OVERVIEW_URL)]);
+      if (p.status === "rejected") throw p.reason;
+      P = p.value; O = o.status === "fulfilled" ? o.value : null;
+      banner.style.display = "none";
+      drawAll();
+    } catch (e) {
+      banner.textContent = `Could not load price data (${e.message}). It appears after the first update run that includes the prices export.`;
+      banner.style.display = "block";
+    }
+  }
+
+  charts.gbp = echarts.init(document.getElementById("c-gbp"));
+  charts.eu = echarts.init(document.getElementById("c-eu"));
+  charts.spread = echarts.init(document.getElementById("c-spread"));
+  charts.flow = echarts.init(document.getElementById("c-flow"));
+  echarts.connect([charts.gbp, charts.eu]);
+
+  document.getElementById("range").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    HOURS = +b.dataset.hours;
+    document.querySelectorAll("#range button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    drawAll();
+  });
+  window.addEventListener("resize", () => Object.values(charts).forEach((c) => c.resize()));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+  load();
+  setInterval(load, (cfg.REFRESH_MINUTES || 5) * 60e3);
+})();
+</script>
+</body>
+</html>

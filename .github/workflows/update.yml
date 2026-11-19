@@ -30,6 +30,7 @@ jobs:
       GBDASH_S3_ENDPOINT: ${{ secrets.GBDASH_S3_ENDPOINT }}  # e.g. https://<account>.r2.cloudflarestorage.com
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ENTSOE_API_TOKEN: ${{ secrets.ENTSOE_API_TOKEN }}       # optional: ENTSO-E datasets are skipped without it
     steps:
       - uses: actions/checkout@v5
 

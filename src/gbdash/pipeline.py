@@ -60,7 +60,8 @@ def update(spec: DatasetSpec, store: Store, client=None, now: datetime | None = 
         log.info("%s: empty store, bootstrapping from %s", spec.name, start)
     else:
         start = latest.to_pydatetime() - timedelta(days=spec.lookback_days)
-    stats = _ingest(spec, store, client, start, now)
+    end = now + timedelta(days=spec.horizon_days)
+    stats = _ingest(spec, store, client, start, end)
     store.write_manifest(spec, attribution(spec.source))
     log.info("%s: %s", spec.name, stats)
     return stats
@@ -81,7 +82,7 @@ def backfill(spec: DatasetSpec, store: Store, start: datetime, end: datetime | N
     """Load history month by month. With resume=True, months already complete are skipped,
     so a killed backfill can simply be re-run."""
     client = client or get_client(spec.source)
-    end = end or utcnow()
+    end = end or (utcnow() + timedelta(days=spec.horizon_days))
     have = set(store.partitions(spec.name))
     totals = {"incoming": 0, "inserted": 0, "updated_or_same": 0, "skipped_months": 0}
     month_start = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)

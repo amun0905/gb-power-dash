@@ -72,6 +72,17 @@ Elexon data is used under the BMRS Data Licence. Show *"Contains BMRS data © El
 copyright and database right"* wherever the data is displayed (the manifests carry this text).
 Check each source's terms before any commercial use.
 
+## Prices tab (`site/prices.html`)
+
+| dataset | source | notes |
+|---|---|---|
+| `da_gb_n2ex` | NESO Data Portal (Nord Pool N2EX) | GB day-ahead £/MWh, published daily; NESO Open Data Licence |
+| `da_europe` | ENTSO-E Transparency Platform (A44) | FR, BE, NL, NO2, DK1, IE-SEM, DE-LU in EUR; needs the `ENTSOE_API_TOKEN` secret |
+| `fx_eurgbp` | ECB reference rate | GBP per EUR, used to convert continental prices |
+
+`gbdash export` also writes `web/prices.json` (hourly, 30 days back plus tomorrow).
+If `ENTSOE_API_TOKEN` is missing, the ENTSO-E dataset is skipped with a warning rather than failing the run.
+
 ## Website (`site/`)
 
 A static page (`site/index.html` with ECharts) that reads `web/overview.json` from the bucket.

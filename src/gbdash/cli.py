@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 from . import pipeline
 from .registry import load_registry
-from .sources import attribution
+from .sources import SourceNotConfigured, attribution, is_configured
 from .storage import Store
 
 log = logging.getLogger("gbdash")
@@ -73,6 +73,8 @@ def main(argv=None) -> int:
         for spec in _pick(registry, a.datasets):
             try:
                 pipeline.update(spec, store)
+            except SourceNotConfigured as e:
+                log.warning("%s: %s", spec.name, e)
             except Exception:  # keep going: one broken feed shouldn't stop the others
                 log.exception("update failed for %s", spec.name)
                 failures.append(spec.name)
@@ -82,23 +84,29 @@ def main(argv=None) -> int:
             start = a.start or datetime.combine(spec.start, datetime.min.time(), tzinfo=timezone.utc)
             try:
                 print(spec.name, pipeline.backfill(spec, store, start, a.end, resume=not a.no_resume))
+            except SourceNotConfigured as e:
+                log.warning("%s: %s", spec.name, e)
             except Exception:
                 log.exception("backfill failed for %s", spec.name)
                 failures.append(spec.name)
 
     elif a.cmd == "status":
-        report = [pipeline.freshness(spec, store) for spec in registry.values()]
+        report = [pipeline.freshness(spec, store) if is_configured(spec.source)
+                  else {"dataset": spec.name, "skipped": "source not configured", "stale": False}
+                  for spec in registry.values()]
         print(json.dumps(report, indent=2))
         if a.fail_on_stale:
             failures = [r["dataset"] for r in report if r["stale"]]
 
     elif a.cmd == "export":
         from .export import write_overview
-        try:
-            write_overview(store, registry)
-        except Exception:
-            log.exception("export failed")
-            failures.append("export")
+        from .export_prices import write_prices
+        for name, fn in (("overview", write_overview), ("prices", write_prices)):
+            try:
+                fn(store, registry)
+            except Exception:
+                log.exception("export %s failed", name)
+                failures.append(f"export:{name}")
 
     if a.cmd in ("update", "backfill"):
         manifests = [m for spec in registry.values() if (m := store.manifest(spec))]
