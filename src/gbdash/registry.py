@@ -10,7 +10,24 @@ import yaml
 VALID_TYPES = {"datetime", "date", "int", "float", "str"}
 VALID_QUERIES = {"window", "settlement_date"}
 
-DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config" / "datasets.yaml"
+CONFIG_RELPATH = Path("config") / "datasets.yaml"
+
+
+def find_config() -> Path:
+    """Locate datasets.yaml: env GBDASH_CONFIG, else ./config/ in the working directory
+    (how CI runs it), else relative to the source tree (editable installs)."""
+    import os
+    candidates = []
+    if os.getenv("GBDASH_CONFIG"):
+        candidates.append(Path(os.environ["GBDASH_CONFIG"]))
+    candidates += [Path.cwd() / CONFIG_RELPATH, Path(__file__).resolve().parents[2] / CONFIG_RELPATH]
+    for c in candidates:
+        if c.is_file():
+            return c
+    raise FileNotFoundError(
+        "Could not find config/datasets.yaml. Run gbdash from the repo folder or set GBDASH_CONFIG. "
+        f"Looked in: {[str(c) for c in candidates]}"
+    )
 
 
 @dataclass(frozen=True)
@@ -54,7 +71,7 @@ class DatasetSpec:
 
 
 def load_registry(path: str | Path | None = None) -> dict[str, DatasetSpec]:
-    path = Path(path) if path else DEFAULT_CONFIG
+    path = Path(path) if path else find_config()
     raw = yaml.safe_load(path.read_text())
     specs: dict[str, DatasetSpec] = {}
     for name, cfg in (raw.get("datasets") or {}).items():

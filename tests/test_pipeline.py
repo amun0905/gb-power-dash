@@ -152,3 +152,14 @@ def test_cli_list_and_status(tmp_path, capsys):
     assert main(["--store", str(tmp_path), "list"]) == 0
     assert "generation_fuelinst" in capsys.readouterr().out
     assert main(["--store", str(tmp_path), "status", "--fail-on-stale"]) == 1  # empty store is stale
+
+
+def test_config_found_from_working_directory_and_env(tmp_path, monkeypatch):
+    from gbdash.registry import find_config
+    repo_cfg = find_config()
+    # Simulate a non-editable install: package lives elsewhere, CWD is the repo.
+    monkeypatch.chdir(repo_cfg.parents[1])
+    assert find_config() == repo_cfg.parents[1] / "config" / "datasets.yaml"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GBDASH_CONFIG", str(repo_cfg))
+    assert find_config() == repo_cfg
