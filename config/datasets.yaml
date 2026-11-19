@@ -1,0 +1,102 @@
+# Dataset registry: one entry per table the pipeline maintains.
+# Adding a new dataset is (usually) just a new block here.
+#
+# Fields
+#   source        which client fetches it (elexon | ...more later: neso, entsoe)
+#   path          API path relative to the source base URL. {date} is filled for
+#                 query: settlement_date
+#   query         window          -> one request per time window, params below
+#                 settlement_date -> one request per settlement date (path has {date})
+#   params        names of the from/to query parameters (window mode only)
+#   extra_params  any fixed query parameters
+#   time_column   UTC timestamp used for partitioning and incremental updates
+#   keys          columns that uniquely identify a row (used for de-duplication)
+#   version_column  if two rows share keys, the one with the latest value here wins
+#                 (e.g. publishTime: a later publication supersedes an earlier one)
+#   chunk_days    size of each request window (keep small; APIs cap ranges)
+#   lookback_days on every update, re-fetch this far back to catch revisions/late data
+#   start         earliest date a full backfill goes back to
+#   max_staleness_hours  `status` flags the dataset if the newest row is older than this
+#   columns       expected columns and types (datetime | date | int | float | str).
+#                 Only these are kept, so schema drift upstream can't break the store.
+
+datasets:
+
+  generation_fuelinst:
+    description: Instantaneous generation outturn by fuel type, 5-minute (incl. interconnectors)
+    source: elexon
+    path: /datasets/FUELINST
+    query: window
+    params: {from: publishDateTimeFrom, to: publishDateTimeTo}
+    time_column: startTime
+    keys: [startTime, fuelType]
+    version_column: publishTime
+    chunk_days: 1
+    lookback_days: 1
+    start: "2024-01-01"
+    max_staleness_hours: 2
+    columns:
+      startTime: datetime
+      publishTime: datetime
+      settlementDate: date
+      settlementPeriod: int
+      fuelType: str
+      generation: float
+
+  demand_indo:
+    description: Initial national demand outturn, half-hourly
+    source: elexon
+    path: /datasets/INDO
+    query: window
+    params: {from: publishDateTimeFrom, to: publishDateTimeTo}
+    time_column: startTime
+    keys: [startTime]
+    version_column: publishTime
+    chunk_days: 2
+    lookback_days: 2
+    start: "2024-01-01"
+    max_staleness_hours: 3
+    columns:
+      startTime: datetime
+      publishTime: datetime
+      settlementDate: date
+      settlementPeriod: int
+      demand: float
+
+  market_index_mid:
+    description: Market Index Data (APX/N2EX reference price and volume), half-hourly
+    source: elexon
+    path: /datasets/MID
+    query: window
+    params: {from: from, to: to}
+    time_column: startTime
+    keys: [startTime, dataProvider]
+    chunk_days: 2
+    lookback_days: 2
+    start: "2024-01-01"
+    max_staleness_hours: 4
+    columns:
+      startTime: datetime
+      settlementDate: date
+      settlementPeriod: int
+      dataProvider: str
+      price: float
+      volume: float
+
+  system_prices:
+    description: System (imbalance) price and net imbalance volume, half-hourly
+    source: elexon
+    path: /balancing/settlement/system-prices/{date}
+    query: settlement_date
+    time_column: startTime
+    keys: [settlementDate, settlementPeriod]
+    lookback_days: 3
+    start: "2024-01-01"
+    max_staleness_hours: 4
+    columns:
+      startTime: datetime
+      settlementDate: date
+      settlementPeriod: int
+      systemSellPrice: float
+      systemBuyPrice: float
+      netImbalanceVolume: float

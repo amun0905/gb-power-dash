@@ -1,0 +1,51 @@
+name: backfill
+
+# Manual: Actions tab -> backfill -> Run workflow. Safe to re-run; finished months are skipped.
+on:
+  workflow_dispatch:
+    inputs:
+      datasets:
+        description: "Space-separated dataset names"
+        required: true
+        default: "generation_fuelinst demand_indo market_index_mid system_prices"
+      start:
+        description: "Start date (YYYY-MM-DD); blank = each dataset's configured start"
+        required: false
+      end:
+        description: "End date (YYYY-MM-DD); blank = now"
+        required: false
+
+concurrency:
+  group: data-store
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      GBDASH_STORE: ${{ vars.GBDASH_STORE }}
+      GBDASH_S3_ENDPOINT: ${{ secrets.GBDASH_S3_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ".[s3]"
+      - name: Backfill
+        env:   # inputs passed via env, never interpolated into the script
+          IN_DATASETS: ${{ github.event.inputs.datasets }}
+          IN_START: ${{ github.event.inputs.start }}
+          IN_END: ${{ github.event.inputs.end }}
+        run: |
+          ARGS=()
+          [ -n "$IN_START" ] && ARGS+=(--start "$IN_START")
+          [ -n "$IN_END" ] && ARGS+=(--end "$IN_END")
+          # shellcheck disable=SC2086
+          gbdash backfill $IN_DATASETS "${ARGS[@]}"

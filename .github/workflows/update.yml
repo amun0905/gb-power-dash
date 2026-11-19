@@ -1,0 +1,67 @@
+name: update-data
+
+# Runs in GitHub's cloud every 30 min -- no machine of yours needs to be on.
+# Minutes 7/37 avoid the :00/:30 rush, when GitHub delays scheduled jobs most.
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      datasets:
+        description: "Space-separated dataset names (blank = all)"
+        required: false
+        default: ""
+
+# Never let two runs write to the store at the same time.
+concurrency:
+  group: data-store
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write   # only used by the keep-alive step
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GBDASH_STORE: ${{ vars.GBDASH_STORE }}                 # e.g. s3://gb-power-data
+      GBDASH_S3_ENDPOINT: ${{ secrets.GBDASH_S3_ENDPOINT }}  # e.g. https://<account>.r2.cloudflarestorage.com
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check storage is configured
+        run: |
+          if [ -z "$GBDASH_STORE" ]; then
+            echo "::error::Set the repository variable GBDASH_STORE (e.g. s3://gb-power-data). Without it, data would be written to the throw-away runner disk."
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install ".[s3]"
+
+      - name: Update datasets
+        env:
+          IN_DATASETS: ${{ github.event.inputs.datasets }}
+        # shellcheck disable=SC2086
+        run: gbdash update $IN_DATASETS
+
+      - name: Freshness check
+        if: always()
+        run: gbdash status --fail-on-stale
+
+      # GitHub silently disables cron workflows after 60 days without repo activity.
+      # Re-enabling via the API on each run keeps the schedule alive.
+      - name: Keep schedule alive
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update.yml/enable"

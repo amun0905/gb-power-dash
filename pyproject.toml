@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gbdash"
+version = "0.1.0"
+description = "Data pipeline for a GB power market dashboard built on public data"
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.1",
+  "pyarrow>=14",
+  "requests>=2.31",
+  "pyyaml>=6",
+  "fsspec>=2024.2",
+]
+
+[project.optional-dependencies]
+s3 = ["s3fs>=2024.2"]
+dev = ["pytest>=8", "responses>=0.25"]
+
+[project.scripts]
+gbdash = "gbdash.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
