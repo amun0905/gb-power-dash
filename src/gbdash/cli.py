@@ -119,5 +119,26 @@ def main(argv=None) -> int:
     return 0
 
 
+def run() -> None:
+    """Console entry point. Exits without Python's interpreter teardown: the S3 client's background
+    event-loop thread and pyarrow's thread pool occasionally abort at shutdown ("terminate called
+    without an active exception", exit 134) after all work has finished. Every file is closed and
+    every upload complete by the time main() returns, so skipping teardown is safe."""
+    rc = 1
+    try:
+        rc = main()
+    except SystemExit as exc:  # e.g. sys.exit("Unknown dataset(s) ...")
+        if isinstance(exc.code, str):
+            print(exc.code, file=sys.stderr)
+            rc = 1
+        else:
+            rc = exc.code or 0
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        logging.shutdown()
+        os._exit(rc if isinstance(rc, int) else 1)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    run()

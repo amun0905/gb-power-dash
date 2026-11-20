@@ -20,7 +20,7 @@ s3 = ["s3fs>=2024.2"]
 dev = ["pytest>=8", "responses>=0.25"]
 
 [project.scripts]
-gbdash = "gbdash.cli:main"
+gbdash = "gbdash.cli:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
