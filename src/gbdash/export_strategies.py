@@ -58,10 +58,10 @@ def build_frame(store: Store, registry: dict[str, DatasetSpec], start, end) -> p
     return df
 
 
-def daily_pnl(df: pd.DataFrame, exit_col: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def daily_pnl(df: pd.DataFrame, exit_col: str, entry_col: str = "da") -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Daily P&L (£, 1 MW position), traded MWh and possible MWh per block, indexed by EFA date."""
-    ok = df["da"].notna() & df[exit_col].notna()
-    pnl = (0.5 * (df[exit_col] - df["da"])).where(ok, 0.0)
+    ok = df[entry_col].notna() & df[exit_col].notna()
+    pnl = (0.5 * (df[exit_col] - df[entry_col])).where(ok, 0.0)
     mwh = 0.5 * ok.astype(float)
     possible = pd.Series(0.5, index=df.index)
 
@@ -76,10 +76,10 @@ def daily_pnl(df: pd.DataFrame, exit_col: str) -> tuple[pd.DataFrame, pd.DataFra
     return out["pnl"], out["mwh"], out["possible"]
 
 
-def heatmap(df: pd.DataFrame, exit_col: str) -> dict:
+def heatmap(df: pd.DataFrame, exit_col: str, entry_col: str = "da") -> dict:
     """Average (exit - day-ahead) £/MWh by UK hour of day x month."""
-    ok = df["da"].notna() & df[exit_col].notna()
-    d = df[ok].assign(spread=lambda x: x[exit_col] - x["da"],
+    ok = df[entry_col].notna() & df[exit_col].notna()
+    d = df[ok].assign(spread=lambda x: x[exit_col] - x[entry_col],
                       month=lambda x: x.index.tz_convert(TZ).strftime("%Y-%m"))
     if d.empty:
         return {"months": [], "hours": list(range(24)), "values": []}
@@ -96,8 +96,10 @@ def build_strategies(store: Store, registry: dict[str, DatasetSpec], now: dateti
 
     modes = {}
     dates = None
-    for mode, col in (("mid", "mid"), ("imbalance", "imbalance")):
-        pnl, mwh, possible = daily_pnl(df, col)
+    # mode -> (entry price, exit price). "mid"/"imbalance" keep their original meaning for older pages.
+    spreads = {"mid": ("da", "mid"), "imbalance": ("da", "imbalance"), "mid_imbalance": ("mid", "imbalance")}
+    for mode, (entry, col) in spreads.items():
+        pnl, mwh, possible = daily_pnl(df, col, entry)
         # drop leading days before both price series exist, and the current (incomplete) EFA day
         traded_any = mwh["Baseload"] > 0
         if traded_any.any():
@@ -110,7 +112,7 @@ def build_strategies(store: Store, registry: dict[str, DatasetSpec], now: dateti
         modes[mode] = {
             "pnl": {b: _clean(pnl[b]) for b in BLOCKS},
             "mwh": {b: _clean(mwh[b]) for b in BLOCKS},
-            "heatmap": heatmap(df, col),
+            "heatmap": heatmap(df, col, entry),
         }
     possible_out = {b: _clean(possible[b]) for b in BLOCKS} if dates is not None else {}
 
@@ -119,12 +121,16 @@ def build_strategies(store: Store, registry: dict[str, DatasetSpec], now: dateti
         "blocks": BLOCKS,
         "dates": [d.strftime("%Y-%m-%d") for d in (dates if dates is not None else [])],
         "possible_mwh": possible_out,
+        "spreads": {m: {"buy": e, "sell": x} for m, (e, x) in spreads.items()},
         "modes": modes,
         "attribution": [attribution("neso"), attribution("elexon")],
         "notes": [
             "Long 1 MW in the N2EX day-ahead auction for every hour of the block, closed out at the exit price.",
             "MIP exit: sold at the Market Index Price, an intraday proxy rather than an executable price. " + DEFINITION,
             "Imbalance exit: position left open and settled at the system price.",
+            "MIP to imbalance: bought at MIP, settled at the system price. It shows how cash-out differs from the traded "
+            "intraday price, rather than a strategy one would normally run.",
+            "The legs add up: (imbalance - day-ahead) = (MIP - day-ahead) + (imbalance - MIP). Short positions are the mirror image of long.",
             "No fees, bid-ask spread or slippage. Half-hours missing either price are skipped (see coverage).",
             "EFA blocks and days in UK time; an EFA day starts at 23:00 the evening before.",
         ],

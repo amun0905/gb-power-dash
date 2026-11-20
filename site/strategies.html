@@ -24,9 +24,14 @@
   <span class="meta" id="meta">Loading…</span>
   <span class="spacer"></span>
   <div class="controls">
-    <div class="seg" role="group" aria-label="Exit" id="exit">
-      <button data-mode="mid" aria-pressed="true">Sell at MIP</button>
-      <button data-mode="imbalance">Settle at imbalance</button>
+    <div class="seg" role="group" aria-label="Direction" id="dir">
+      <button data-dir="1" aria-pressed="true">Long</button>
+      <button data-dir="-1">Short</button>
+    </div>
+    <div class="seg" role="group" aria-label="Spread: first price to second price" id="exit">
+      <button data-mode="mid" aria-pressed="true">Day-ahead → MIP</button>
+      <button data-mode="imbalance">Day-ahead → imbalance</button>
+      <button data-mode="mid_imbalance">MIP → imbalance</button>
     </div>
     <div class="seg" role="group" aria-label="Period" id="range">
       <button data-days="90">90d</button>
@@ -44,7 +49,7 @@
       <div class="card-head"><h2 id="cum-title">Cumulative P&amp;L: long N2EX day-ahead, sold at MIP</h2><span class="unit">£ · 1 MW held in every hour of the block</span>
         <span class="tools"><button data-toggle-table>Table</button></span></div>
       <div class="chart tall" id="c-cum"></div><div class="table-wrap"></div>
-      <p class="note">Rising line = the day-ahead auction was cheaper than the exit price in that block. Click a block in the legend to hide or show it.</p>
+      <p class="note" id="cum-note">Click a block in the legend to hide or show it.</p>
     </article>
 
     <article class="card span-12">
@@ -57,8 +62,8 @@
       <div class="card-head"><h2 id="heat-title">Average exit price minus day-ahead, by hour and month</h2><span class="unit">£/MWh · UK time</span>
         <span class="tools"><button data-toggle-table>Table</button></span></div>
       <div class="chart heat" id="c-heat"></div><div class="table-wrap"></div>
-      <p class="note"><span class="key"><i style="background:var(--div-neg)"></i>Positive: exit above day-ahead (long day-ahead profits)</span>
-        <span class="key"><i style="background:var(--div-pos)"></i>Negative: exit below day-ahead</span></p>
+      <p class="note"><span class="key"><i style="background:var(--div-neg)"></i>Positive: the position made money in that hour</span>
+        <span class="key"><i style="background:var(--div-pos)"></i>Negative: it lost money</span></p>
     </article>
   </section>
 </main>
@@ -70,9 +75,21 @@
   const params = new URLSearchParams(location.search);
   const URL_ = params.get("strategies") || cfg.STRATEGIES_URL || (cfg.DATA_URL || "").replace(/overview\.json.*$/, "") + "strategies.json";
   const COLORS = ["--ic-1", "--ic-2", "--ic-3", "--ic-4", "--ic-5", "--ic-6", "--ic-7", "--demand"]; // EFA1-6, Peak, Baseload
-  const EXIT_LABEL = { mid: "sold at MIP", imbalance: "settled at system price" };
+  // Spread = first price -> second price. Long buys at the first and sells/settles at the second; short is the reverse.
+  const LEGS = { mid: ["N2EX day-ahead", "MIP"], imbalance: ["N2EX day-ahead", "imbalance (system price)"], mid_imbalance: ["MIP", "imbalance (system price)"] };
+  const SHORT = { mid: "MIP", imbalance: "system price", mid_imbalance: "system price" };
+  function describe() {
+    const [a, b] = LEGS[MODE];
+    const close = MODE === "mid" ? (DIR > 0 ? "sold at MIP" : "bought back at MIP") : "settled at imbalance";
+    const title = `${DIR > 0 ? "Long" : "Short"} ${a === "MIP" ? "at MIP" : a}, ${close}`;
+    const first = a.replace("N2EX ", ""), second = SHORT[MODE];
+    const heat = DIR > 0 ? `Average ${second} minus ${first}` : `Average ${first} minus ${second}`;
+    const rise = DIR > 0 ? `Rising line = ${first} was cheaper than ${second} in that block.`
+                         : `Rising line = ${first} was dearer than ${second} in that block.`;
+    return { title, heat, rise };
+  }
 
-  let S = null, MODE = "mid", DAYS = 0;
+  let S = null, MODE = "mid", DAYS = 0, DIR = 1;
   const charts = {};
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const num = (v, d = 0) => v == null || Number.isNaN(v) ? "–" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -89,7 +106,7 @@
   function stats() {
     const m = S.modes[MODE], i0 = sliceIdx();
     return S.blocks.map((b, k) => {
-      const pnl = m.pnl[b].slice(i0), mwh = m.mwh[b].slice(i0), poss = S.possible_mwh[b].slice(i0);
+      const pnl = m.pnl[b].slice(i0).map((v) => v == null ? v : DIR * v), mwh = m.mwh[b].slice(i0), poss = S.possible_mwh[b].slice(i0);
       let cum = 0, peak = 0, dd = 0, pos = 0, traded = 0, worst = null;
       const cumSeries = pnl.map((v) => {
         cum += v || 0; peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum); return cum;
@@ -141,7 +158,8 @@
     const i0 = sliceIdx(), firstMonth = S.dates[i0] ? S.dates[i0].slice(0, 7) : null;
     const keep = hm.months.map((m, j) => [m, j]).filter(([m]) => !firstMonth || m >= firstMonth);
     const data = [];
-    keep.forEach(([m, j], x) => hm.values[j].forEach((v, h) => data.push([x, h, v])));
+    const sv = (v) => v == null ? v : DIR * v;
+    keep.forEach(([m, j], x) => hm.values[j].forEach((v, h) => data.push([x, h, sv(v)])));
     const vals = data.map((d) => d[2]).filter((v) => v != null).map(Math.abs).sort((a, b) => a - b);
     const lim = Math.max(1, Math.ceil(vals[Math.floor(vals.length * 0.95)] || 1)); // clip outliers at 95th pct
     const o = baseAxes();
@@ -158,7 +176,7 @@
     o.series = [{ type: "heatmap", data, itemStyle: { borderColor: css("--surface-1"), borderWidth: 1 }, emphasis: { itemStyle: { borderColor: css("--text-primary") } } }];
     charts.heat.setOption(o, true);
     setTable("heat", ["Hour (UK)", ...keep.map(([m]) => fmtMonth(m))],
-      hm.hours.map((h) => [String(h).padStart(2, "0") + ":00", ...keep.map(([, j]) => hm.values[j][h])]), 2, false);
+      hm.hours.map((h) => [String(h).padStart(2, "0") + ":00", ...keep.map(([, j]) => sv(hm.values[j][h]))]), 2, false);
   }
 
   function drawSummary(st) {
@@ -209,9 +227,12 @@
   function drawAll() {
     if (!S || !S.dates.length) return;
     const st = stats();
-    document.getElementById("cum-title").textContent = `Cumulative P&L: long N2EX day-ahead, ${EXIT_LABEL[MODE]}`;
-    document.getElementById("heat-title").textContent = `Average ${MODE === "mid" ? "MIP" : "system price"} minus day-ahead, by hour and month`;
-    document.getElementById("sum-unit").textContent = `${EXIT_LABEL[MODE]} · selected period`;
+    if (!S.modes[MODE]) { MODE = "mid"; }  // older data file without the MIP -> imbalance spread
+    const d = describe();
+    document.getElementById("cum-title").textContent = `Cumulative P&L: ${d.title}`;
+    document.getElementById("cum-note").textContent = `${d.rise} Click a block in the legend to hide or show it.`;
+    document.getElementById("heat-title").textContent = `${d.heat}, by hour and month`;
+    document.getElementById("sum-unit").textContent = `${d.title} · selected period`;
     drawKpis(st); drawCum(st); drawSummary(st); drawHeat();
     document.getElementById("meta").textContent = `Updated ${new Date(S.generated_at).toLocaleString("en-GB", { timeZone: "Europe/London", dateStyle: "medium", timeStyle: "short" })} (UK time)`;
     document.getElementById("footer").innerHTML = `${S.attribution.join(" · ")}. ${S.notes.join(" ")} Backtest on historical data; not investment advice.`;
@@ -239,6 +260,7 @@
     drawAll();
   });
   seg("exit", "mode", (v) => { MODE = v; });
+  seg("dir", "dir", (v) => { DIR = +v; });
   seg("range", "days", (v) => { DAYS = +v; });
   window.addEventListener("resize", () => Object.values(charts).forEach((c) => c.resize()));
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);

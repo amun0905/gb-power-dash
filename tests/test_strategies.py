@@ -50,6 +50,11 @@ def test_pnl_math_and_coverage(tmp_path):
     i = 3  # a full day
     assert mid["pnl"]["EFA 3 (07–11)"][i] == pytest.approx(8.0)       # 4 MWh x £2
     assert imb["pnl"]["Baseload"][i] == pytest.approx(-120.0)          # 24 MWh x -£5
+    mi = d["modes"]["mid_imbalance"]
+    assert mi["pnl"]["EFA 3 (07–11)"][i] == pytest.approx(-28.0)      # 4 MWh x (95 - 102)
+    # legs add up: (imb - da) = (mid - da) + (imb - mid)
+    for b in d["blocks"]:
+        assert imb["pnl"][b][i] == pytest.approx(mid["pnl"][b][i] + mi["pnl"][b][i])
     assert d["possible_mwh"]["Baseload"][i] == 24
     # first EFA day starts 23:00 on 31 Dec, before the data (-1 MWh), and misses one MID half-hour (-0.5)
     assert mid["mwh"]["Baseload"][0] == pytest.approx(22.5)
