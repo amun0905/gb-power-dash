@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
 import pandas as pd
+import requests
 
 from ..http import make_session
 from ..registry import DatasetSpec
@@ -34,6 +35,10 @@ ZONES = {
 }
 
 _RES = {"PT15M": 15, "PT30M": 30, "PT60M": 60}
+
+
+class TransientError(RuntimeError):
+    """ENTSO-E server-side trouble (5xx/599, timeouts) that a later run will likely not hit."""
 
 
 def token() -> str | None:
@@ -113,35 +118,51 @@ class EntsoeClient:
             raise SourceNotConfigured("ENTSOE_API_TOKEN is not set; skipping ENTSO-E datasets")
         zones = spec.options.get("zones") or list(ZONES)
         step = timedelta(days=spec.chunk_days)
+        failed = []
         for zone in zones:
             eic = ZONES.get(zone, zone)
             cur = start
-            while cur < end:
-                nxt = min(cur + step, end)
-                params = {"securityToken": tok, "documentType": "A44", "in_Domain": eic, "out_Domain": eic,
-                          "periodStart": _fmt(cur), "periodEnd": _fmt(nxt)}
-                # Ask for the documented IEC XML format explicitly: the renewed platform answers
-                # with its own JSON format when the client prefers JSON.
-                resp = self.session.get(BASE_URL, params=params, timeout=self.timeout,
-                                        headers={"Accept": "application/xml, text/xml;q=0.9"})
-                if resp.status_code in (401, 403):
-                    raise RuntimeError(f"ENTSO-E rejected the token ({resp.status_code}). Check the ENTSOE_API_TOKEN "
-                                       "secret, and that Restful API access is enabled for your account.")
-                if resp.status_code >= 400 and b"Acknowledgement" not in resp.content:
-                    safe_url = resp.url.replace(tok, "***")
-                    raise RuntimeError(f"GET {safe_url} -> {resp.status_code}: {resp.text[:300]}")
-                if resp.content.lstrip()[:1] in (b"{", b"["):
-                    dump = f"entsoe_debug_{zone}.json"
-                    with open(dump, "wb") as fh:
-                        fh.write(resp.content)
-                    raise RuntimeError(f"ENTSO-E answered in JSON even though XML was requested; the response "
-                                       f"was saved to {dump} so the parser can be adapted.")
-                try:
-                    df = parse_a44(resp.content, zone)
-                except Exception as exc:
-                    ctype = resp.headers.get("Content-Type")
-                    raise RuntimeError(f"Could not parse ENTSO-E response for {zone} (HTTP {resp.status_code}, "
-                                       f"Content-Type {ctype}): {exc}. Body starts: {resp.content[:200]!r}") from exc
-                log.info("%s %s %s..%s: %d rows", spec.name, zone, _fmt(cur), _fmt(nxt), len(df))
-                yield df
-                cur = nxt
+            try:
+                while cur < end:
+                    nxt = min(cur + step, end)
+                    df = self._fetch_one(tok, spec, zone, eic, cur, nxt)
+                    log.info("%s %s %s..%s: %d rows", spec.name, zone, _fmt(cur), _fmt(nxt), len(df))
+                    yield df
+                    cur = nxt
+            except TransientError as exc:
+                # ENTSO-E has occasional gateway timeouts. Skip this zone for this run; the next run
+                # re-fetches the lookback window, and `gbdash status` flags it if it stays missing.
+                log.warning("%s: skipping %s this run after retries: %s", spec.name, zone, exc)
+                failed.append(zone)
+        if failed and len(failed) == len(zones):
+            raise RuntimeError(f"ENTSO-E unavailable for every zone this run ({', '.join(failed)}).")
+
+    def _fetch_one(self, tok, spec, zone, eic, cur, nxt) -> pd.DataFrame:
+        params = {"securityToken": tok, "documentType": "A44", "in_Domain": eic, "out_Domain": eic,
+                  "periodStart": _fmt(cur), "periodEnd": _fmt(nxt)}
+        try:
+            # Ask for the documented IEC XML format explicitly: the renewed platform answers
+            # with its own JSON format when the client prefers JSON.
+            resp = self.session.get(BASE_URL, params=params, timeout=self.timeout,
+                                    headers={"Accept": "application/xml, text/xml;q=0.9"})
+        except requests.RequestException as exc:  # connection errors/timeouts after retries
+            raise TransientError(str(exc)) from exc
+        if resp.status_code in (401, 403):
+            raise RuntimeError(f"ENTSO-E rejected the token ({resp.status_code}). Check the ENTSOE_API_TOKEN "
+                               "secret, and that Restful API access is enabled for your account.")
+        if resp.status_code >= 400 and b"Acknowledgement" not in resp.content:
+            safe_url = resp.url.replace(tok, "***")
+            msg = f"GET {safe_url} -> {resp.status_code}: {resp.text[:300]}"
+            raise TransientError(msg) if resp.status_code >= 500 else RuntimeError(msg)
+        if resp.content.lstrip()[:1] in (b"{", b"["):
+            dump = f"entsoe_debug_{zone}.json"
+            with open(dump, "wb") as fh:
+                fh.write(resp.content)
+            raise RuntimeError(f"ENTSO-E answered in JSON even though XML was requested; the response "
+                               f"was saved to {dump} so the parser can be adapted.")
+        try:
+            return parse_a44(resp.content, zone)
+        except Exception as exc:
+            ctype = resp.headers.get("Content-Type")
+            raise RuntimeError(f"Could not parse ENTSO-E response for {zone} (HTTP {resp.status_code}, "
+                               f"Content-Type {ctype}): {exc}. Body starts: {resp.content[:200]!r}") from exc

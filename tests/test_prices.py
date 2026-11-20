@@ -128,3 +128,35 @@ def test_entsoe_requests_xml(monkeypatch):
     spec = replace(spec, options={"zones": ["FR"]})
     df = next(EntsoeClient().fetch(spec, datetime(2026, 11, 18, 23, tzinfo=UTC), datetime(2026, 11, 19, 1, tzinfo=UTC)))
     assert "xml" in responses.calls[0].request.headers["Accept"] and not df.empty
+
+
+@responses.activate
+def test_entsoe_skips_zone_on_gateway_timeout(monkeypatch):
+    from dataclasses import replace
+    from gbdash.http import make_session
+    from gbdash.sources.entsoe import BASE_URL
+    monkeypatch.setenv("ENTSOE_API_TOKEN", "t")
+    timeout_body = '{"uuAppErrorMap":{"uu-gateway-router/connectTimeout":{"message":"Unable to access service within time limit."}}}'
+
+    def reply(request):
+        if "10YFR-RTE------C" in request.url:
+            return (599, {}, timeout_body)
+        return (200, {"Content-Type": "text/xml"}, A44)
+    responses.add_callback(responses.GET, BASE_URL, callback=reply)
+    spec = replace(REG["da_europe"], options={"zones": ["FR", "BE"]})
+    client = EntsoeClient(session=make_session(total_retries=1, backoff=0))
+    frames = list(client.fetch(spec, datetime(2026, 11, 18, 23, tzinfo=UTC), datetime(2026, 11, 19, 1, tzinfo=UTC)))
+    assert len(frames) == 1 and set(frames[0].zone) == {"BE"}   # FR skipped, BE still fetched
+
+
+@responses.activate
+def test_entsoe_all_zones_down_is_an_error(monkeypatch):
+    from dataclasses import replace
+    from gbdash.http import make_session
+    from gbdash.sources.entsoe import BASE_URL
+    monkeypatch.setenv("ENTSOE_API_TOKEN", "t")
+    responses.add(responses.GET, BASE_URL, status=599, body="{}")
+    spec = replace(REG["da_europe"], options={"zones": ["FR", "BE"]})
+    client = EntsoeClient(session=make_session(total_retries=0, backoff=0))
+    with pytest.raises(RuntimeError, match="every zone"):
+        list(client.fetch(spec, datetime(2026, 11, 18, 23, tzinfo=UTC), datetime(2026, 11, 19, 1, tzinfo=UTC)))

@@ -15,7 +15,7 @@ def make_session(total_retries: int = 5, backoff: float = 1.5) -> requests.Sessi
         read=total_retries,
         status=total_retries,
         backoff_factor=backoff,            # 0, 3, 6, 12, 24 s ...
-        status_forcelist=(429, 500, 502, 503, 504),
+        status_forcelist=(429, 500, 502, 503, 504, 520, 522, 524, 599),  # 52x: CDN timeouts; 599: ENTSO-E gateway timeout
         allowed_methods=frozenset({"GET"}),
         respect_retry_after_header=True,
         raise_on_status=False,             # let the caller see the final response body
