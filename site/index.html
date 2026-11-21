@@ -133,31 +133,52 @@
     return head + rows;
   }
 
+  // A stacked layer that changes sign (pumped storage pumping/generating, imports/exports) would
+  // jump between the positive and negative stacks, drawing a full-height sliver at every flip.
+  // So each layer is drawn as a positive part (stack `${stack}`) and, if needed, a negative part
+  // (stack `${stack}-neg`). Both parts share the name, so the legend toggles them together.
+  function stackedLayers(layers, stack, extra = {}) {
+    const surf = css("--surface-1");
+    return layers.flatMap(({ name, color, data }) => {
+      const tpl = { name, type: "line", symbol: "none", lineStyle: { width: 1, color: surf },
+                    areaStyle: { color, opacity: 1 }, itemStyle: { color }, ...extra };
+      const part = (f) => data.map(([t, v]) => [t, v == null ? null : f(v)]);
+      const out = [{ ...tpl, stack, data: part((v) => Math.max(v, 0)) }];
+      if (data.some(([, v]) => v != null && v < 0)) out.push({ ...tpl, stack: `${stack}-neg`, data: part((v) => Math.min(v, 0)) });
+      return out;
+    });
+  }
+  // Tooltip params with the positive/negative parts of a layer merged back into one value.
+  function mergeParts(ps) {
+    const m = new Map();
+    ps.forEach((p) => {
+      const v = p.value[1];
+      if (!m.has(p.seriesName)) m.set(p.seriesName, { ...p, value: [p.value[0], v] });
+      else if (v != null) { const q = m.get(p.seriesName); q.value = [q.value[0], (q.value[1] || 0) + v]; }
+    });
+    return [...m.values()];
+  }
+
   // ---------- charts ----------
   function drawGen(w) {
-    const surf = css("--surface-1");
-    const series = Object.keys(FUEL_VAR).filter((k) => k in w.generation).map((name) => ({
-      name, type: "line", stack: "gen", symbol: "none", sampling: "lttb",
-      lineStyle: { width: 1, color: surf }, // 1px surface seam between fills
-      areaStyle: { color: css(FUEL_VAR[name]), opacity: 1 }, itemStyle: { color: css(FUEL_VAR[name]) },
-      data: pairs(w.t, w.generation[name], 1 / 1000),
-    }));
-    // Net imports on top so supply meets demand; net exports drop below zero (samesign stacking).
+    const layers = Object.keys(FUEL_VAR).filter((k) => k in w.generation).map((name) => ({
+      name, color: css(FUEL_VAR[name]), data: pairs(w.t, w.generation[name], 1 / 1000) }));
+    // Net imports on top so supply meets demand; net exports are drawn below zero (see stackedLayers).
     const icNames = Object.keys(w.interconnectors);
     const netImp = w.t.map((_, i) => {
       const vals = icNames.map((k) => w.interconnectors[k][i]).filter((v) => v != null);
       return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
     });
-    series.push({ name: "Net imports", type: "line", stack: "gen", symbol: "none", sampling: "lttb",
-      lineStyle: { width: 1, color: surf }, areaStyle: { color: css("--fuel-imports"), opacity: 1 },
-      itemStyle: { color: css("--fuel-imports") }, data: pairs(w.t, netImp, 1 / 1000) });
-    series.forEach((x) => { x.stackStrategy = "samesign"; });
+    layers.push({ name: "Net imports", color: css("--fuel-imports"), data: pairs(w.t, netImp, 1 / 1000) });
+    const demand = { name: "Demand (INDO)", data: pairs(w.t, w.demand, 1 / 1000) };
+    const series = stackedLayers(layers, "gen");
     series.push({ name: "Demand (INDO)", type: "line", symbol: "none", z: 5,
       lineStyle: { width: 2, color: css("--demand") }, itemStyle: { color: css("--demand") },
-      data: pairs(w.t, w.demand, 1 / 1000) });
+      data: demand.data });
     const o = base();
     o.series = series;
-    o.tooltip.formatter = (ps) => {
+    o.tooltip.formatter = (raw) => {
+      const ps = mergeParts(raw);
       const sum = (f) => ps.filter(f).reduce((s, p) => s + (p.value[1] || 0), 0);
       const gen = sum((p) => p.seriesName !== "Demand (INDO)" && p.seriesName !== "Net imports");
       const supply = sum((p) => p.seriesName !== "Demand (INDO)");
@@ -165,7 +186,8 @@
       return tipRows(ps, " GW", 1) + `<div style="border-top:1px solid ${css("--border")};margin-top:4px;padding-top:4px">${row("GB generation", gen)}${row("Generation + net imports", supply)}</div>`;
     };
     charts.gen.setOption(o, true);
-    setTable("gen", ["Time", ...series.map((s) => s.name)], w.t.map((t, i) => [t, ...series.map((s) => s.data[i][1])]), 1);
+    const cols = [...layers, demand];
+    setTable("gen", ["Time", ...cols.map((c) => c.name)], w.t.map((t, i) => [t, ...cols.map((c) => c.data[i][1])]), 1);
   }
 
   // Latest supply mix: GB transmission generation by fuel plus net imports (when GB is importing).
@@ -228,18 +250,16 @@
   function drawIc(w) {
     const names = IC_ORDER.filter((k) => k in w.interconnectors);
     const o = base();
-    o.series = names.map((name) => {
-      const c = css(`--ic-${IC_ORDER.indexOf(name) + 1}`);
-      return { name, type: "line", stack: "ic", stackStrategy: "samesign", symbol: "none", sampling: "lttb",
-               lineStyle: { width: 1, color: css("--surface-1") }, areaStyle: { color: c, opacity: 1 }, itemStyle: { color: c },
-               data: pairs(w.t, w.interconnectors[name], 1 / 1000) };
-    });
-    o.tooltip.formatter = (ps) => {
+    const layers = names.map((name) => ({ name, color: css(`--ic-${IC_ORDER.indexOf(name) + 1}`),
+                                          data: pairs(w.t, w.interconnectors[name], 1 / 1000) }));
+    o.series = stackedLayers(layers, "ic");
+    o.tooltip.formatter = (raw) => {
+      const ps = mergeParts(raw);
       const net = ps.reduce((s, p) => s + (p.value[1] || 0), 0);
       return tipRows(ps, " GW", 2) + `<div style="border-top:1px solid ${css("--border")};margin-top:4px;padding-top:4px;display:flex;justify-content:space-between"><span>Net import</span><b>${num(net, 2)} GW</b></div>`;
     };
     charts.ic.setOption(o, true);
-    setTable("ic", ["Time", ...names], w.t.map((t, i) => [t, ...o.series.map((s) => s.data[i][1])]), 2);
+    setTable("ic", ["Time", ...names], w.t.map((t, i) => [t, ...layers.map((l) => l.data[i][1])]), 2);
   }
 
   function drawIcNow() {
